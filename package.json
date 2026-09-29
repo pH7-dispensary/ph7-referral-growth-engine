@@ -1,0 +1,53 @@
+{
+  "name": "ph7-referral-growth-engine",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20.9.0"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "validate:migrations": "tsx scripts/validate-migrations.ts",
+    "db:apply": "tsx scripts/apply-referral-database-migrations.ts",
+    "db:apply:auth": "tsx scripts/apply-referral-authentication-migration.ts",
+    "db:identity": "tsx scripts/verify-referral-database.ts --identity-only",
+    "db:verify": "tsx scripts/verify-referral-database.ts",
+    "test:database": "tsx scripts/test-referral-database.ts",
+    "test:database:concurrency": "tsx scripts/test-referral-database-concurrency.ts",
+    "test:database:persistence": "NODE_OPTIONS=--conditions=react-server tsx scripts/test-postgres-runtime-persistence.ts",
+    "test:database:auth": "NODE_OPTIONS=--conditions=react-server tsx scripts/test-postgres-authentication.ts",
+    "db:ensure-preview-fixture": "NODE_OPTIONS=--conditions=react-server tsx scripts/ensure-preview-synthetic-fixture.ts",
+    "db:ensure-staging-demo": "NODE_OPTIONS=--conditions=react-server tsx scripts/ensure-staging-demo-fixture.ts",
+    "db:cleanup-step112b": "tsx scripts/cleanup-step112b-concurrency-fixtures.ts",
+    "validate": "npm run lint && npm run typecheck && npm run validate:migrations && npm run test:run"
+  },
+  "dependencies": {
+    "jose": "^6.2.12",
+    "next": "^16.3.6",
+    "pg": "^8.23.0",
+    "qrcode": "^1.5.4",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "server-only": "^0.0.1",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.2",
+    "@types/pg": "^8.23.1",
+    "@types/qrcode": "^1.5.6",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "eslint": "^9.39.5",
+    "eslint-config-next": "^16.3.6",
+    "tsx": "^4.23.15",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.11"
+  }
+}
