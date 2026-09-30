@@ -53,3 +53,31 @@ Rollback is preview-only: deploy the prior known-good revision explicitly to `--
 ## Production runbook requirements
 
 Before launch: define database backups and restore testing; PII/IBAN retention/deletion policy; audit-log retention; webhook retry and alerting policy; secret rotation; rate limits/WAF; incident ownership; and monitoring/alerting for webhook failures, payout queue backlog, ledger/reconciliation mismatches, and fraud-review backlog. Test the disaster-recovery path against a non-production copy before any launch.
+
+## Public production operation — refer.ph7.health
+
+Production deployment target: dedicated Vercel project `ph7-dispensarys-projects/ph7-referral-growth-engine`. Do not use or modify `landingpage` or any other Vercel project. The production deployment uses the same dedicated Referral Engine PostgreSQL/Supabase database; never reset it and never seed real patient data for smoke tests.
+
+Server-only production environment must contain: `REFERRAL_DATABASE_URL`, `ADMIN_SESSION_SECRET`, `PATIENT_SESSION_SECRET`, `PH7_WEBHOOK_SECRET`, `PH7_HANDOFF_JWKS_URL`, `PH7_HANDOFF_ISSUER`, `PH7_HANDOFF_AUDIENCE`, `PH7_HANDOFF_ALLOWED_ALGORITHMS`, `PH7_HANDOFF_MAX_TTL_SECONDS`, `PH7_PATIENTS_URL`, `REFERRAL_PUBLIC_URL`, `PH7_WEBHOOK_TIMESTAMP_TOLERANCE_SECONDS`, `APP_ENV=production`, and `REFERRAL_DEMO_MODE=false`. None belong in `NEXT_PUBLIC_*`.
+
+`refer.ph7.health` is attached to the Vercel project, but registrar DNS must point the subdomain to Vercel before the public domain resolves. Required DNS at the provider:
+
+```text
+type: CNAME
+name: refer
+value: 9f9d85e7e8a6ee99.vercel-dns-016.com.
+```
+
+If the DNS provider cannot use that CNAME, Vercel also accepts:
+
+```text
+type: A
+name: refer
+value: 76.76.21.21
+```
+
+After DNS changes, run `npx vercel domains verify refer.ph7.health --scope ph7-dispensarys-projects`, then smoke test `https://refer.ph7.health` directly.
+
+The production webhook secret is generated and stored in Vercel as `PH7_WEBHOOK_SECRET`. Because Vercel stores it hidden, do not attempt to read or expose it. If pH7 has not yet received the same value through an approved private channel, rotate the Referral Engine production secret during a secure live handoff and provide the value to the pH7 developer only through that approved channel. pH7 must configure it as `REFERRAL_WEBHOOK_SECRET` and send webhooks to `https://refer.ph7.health/api/webhooks/ph7`.
+
+Before joint E2E payment testing, confirm externally: `[ ] Viva Source 3671 Active and linked to pH7`.

@@ -200,6 +200,16 @@ Webhook verification now requires `x-ph7-timestamp` and `x-ph7-signature`, with 
 
 Portal monetary totals now coerce PostgreSQL numeric/bigint values to explicit integer minor units before calculation. Regression coverage proves string values do not concatenate, pending rewards stay separate from available balance, payout debits reduce availability, reversals reduce availability, and lifetime earned remains a sum of credit entries. Friend incentives are displayed as programme configuration awaiting the pH7 checkout/commercial agreement; no fake discount or checkout mechanism was added.
 
+## Public production deployment preparation — 2026-09-30
+
+The current `main` implementation was deployed to the dedicated Vercel project `ph7-dispensarys-projects/ph7-referral-growth-engine` as a production deployment. Production environment variables were configured server-side for the dedicated Referral Engine database, generated admin/patient session secrets, generated webhook HMAC secret, confirmed ES256/JWKS hand-off values, `PH7_PATIENTS_URL=https://patients.ph7.health`, `REFERRAL_PUBLIC_URL=https://refer.ph7.health`, and production/demo flags (`APP_ENV=production`, `REFERRAL_DEMO_MODE=false`). No values are committed or documented.
+
+The custom domain `refer.ph7.health` is attached to the dedicated project, but external registrar DNS is not yet configured. Vercel verification requires DNS provider action before the public domain can resolve. Required record: `CNAME refer 9f9d85e7e8a6ee99.vercel-dns-016.com.`; Vercel also reports `A refer.ph7.health 76.76.21.21` as an acceptable recommended fallback. Keep this scoped to `refer.ph7.health` only.
+
+Production Vercel protection is `all_except_custom_domains`, so the custom domain is intended to be public while Vercel preview/default URLs remain protected by Vercel authentication. Application-level protections remain intact: unauthenticated `/admin` returns 404, unauthenticated `/portal` redirects, malformed hand-off returns 401, and unsigned webhook requests return 400.
+
+Old synthetic review codes `PH7DEMO` and `PREVIEW11` were deactivated in the dedicated database for public production safety. Production smoke checks through the production Vercel alias confirmed public pages have no localhost or old preview URL leakage and no secret markers. The signed valid webhook remote test remains pending because the production webhook secret is correctly hidden; pH7 needs a secure handoff/rotation ceremony before their sender can use the same secret.
+
 ## Staging review mode — Clickable product demo
 
 Acceptance: **implemented for isolated preview review only.** The root page now becomes a polished review landing page only when `APP_ENV=preview` and `REFERRAL_DEMO_MODE=true` are explicitly configured. It links to the patient portal, referred-friend journey, founder admin, and `/integration` status page. Without those flags, production authentication paths remain fail-closed.

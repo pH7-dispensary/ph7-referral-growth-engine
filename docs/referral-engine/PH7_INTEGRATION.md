@@ -73,4 +73,10 @@ The displayed friend incentive is programme configuration only until pH7 checkou
 
 ## Still intentionally disconnected
 
-Real pH7 authentication, real patient traffic, GA4, banking/payment providers, DNS/custom domains, and production payout automation remain disabled until separately authorised.
+The Referral Engine production deployment is prepared for `https://refer.ph7.health`, but public DNS must be configured before that domain resolves. pH7 still owns its app-side release, real patient authentication, checkout discount application, consultation webhooks, Viva checkout source, GA4, banking/payment providers, and production payout automation.
+
+pH7 application variables to configure outside this repository:
+
+- `REFERRAL_WEBHOOK_URL=https://refer.ph7.health/api/webhooks/ph7`
+- `NEXT_PUBLIC_REFERRAL_ENGINE_URL=https://refer.ph7.health`
+- `REFERRAL_WEBHOOK_SECRET` equal to the Referral Engine `PH7_WEBHOOK_SECRET`, transferred only through an approved secure channel.
