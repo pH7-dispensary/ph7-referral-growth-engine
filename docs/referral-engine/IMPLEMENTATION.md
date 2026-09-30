@@ -190,6 +190,16 @@ Tests added: `tests/jwks-handoff.test.ts` creates synthetic RS256 keys locally a
 
 Remaining pH7 dependency: pH7 must independently approve and provide the exact issuer, audience, HTTPS JWKS URL, key lifecycle/rotation policy, asymmetric algorithm(s), TTL, token delivery/return UX, and signed-token implementation. Those values are intentionally not configured in the isolated preview, so it continues to reject all real hand-offs. This phase neither accesses pH7 nor creates patient traffic, authentication-provider integration, GA4, DNS, banking/payment, or production deployment.
 
+## Confirmed pH7 contract and staging defect fixes — 2026-09-30
+
+The Referral Engine now implements the confirmed pH7-side contract while remaining isolated from the pH7 application. Browser hand-off is available at `POST /auth/handoff`; it accepts only a token body field, verifies the configured ES256/JWKS contract, consumes the nonce through the existing PostgreSQL session service, sets the secure opaque session cookies, and redirects to `/portal`. The JSON `POST /api/auth/handoff` endpoint remains for programmatic checks.
+
+The public funnel now creates/resolves an opaque attribution ID server-side and posts the CTA to `/r/[code]/continue`, which redirects to the server-configured `PH7_PATIENTS_URL` with only `attribution_id`. `REFERRAL_PUBLIC_URL`/`VERCEL_URL` drives canonical referral links, QR, copy, and WhatsApp share URLs so deployed staging no longer emits `localhost`.
+
+Webhook verification now requires `x-ph7-timestamp` and `x-ph7-signature`, with the signature calculated over `timestamp + "." + raw_body`. Invalid signatures, malformed/stale/future timestamps, and invalid payloads return 4xx; duplicate events, successful events, and structurally valid unknown attributions return 2xx; genuine runtime failures return 5xx. Unknown attributions are claimed and marked processed without creating referrals or rewards.
+
+Portal monetary totals now coerce PostgreSQL numeric/bigint values to explicit integer minor units before calculation. Regression coverage proves string values do not concatenate, pending rewards stay separate from available balance, payout debits reduce availability, reversals reduce availability, and lifetime earned remains a sum of credit entries. Friend incentives are displayed as programme configuration awaiting the pH7 checkout/commercial agreement; no fake discount or checkout mechanism was added.
+
 ## Staging review mode — Clickable product demo
 
 Acceptance: **implemented for isolated preview review only.** The root page now becomes a polished review landing page only when `APP_ENV=preview` and `REFERRAL_DEMO_MODE=true` are explicitly configured. It links to the patient portal, referred-friend journey, founder admin, and `/integration` status page. Without those flags, production authentication paths remain fail-closed.

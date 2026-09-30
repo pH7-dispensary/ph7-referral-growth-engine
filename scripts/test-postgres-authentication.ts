@@ -12,7 +12,7 @@ const { loadEnvConfig } = require("@next/env") as typeof import("@next/env");
 loadEnvConfig(process.cwd());
 
 const token = randomUUID().replaceAll("-", "");
-const patientReference = `test-step114-${token}`;
+const patientReference = `pat_eu_test_${token}`;
 const patientSecret = "test-patient-session-secret-that-is-long-enough-for-hmac";
 const adminSecret = "test-admin-session-secret-that-is-long-enough-for-hmac";
 const issuer = `https://synthetic-handoff-${token}.invalid`;

@@ -7,6 +7,7 @@ import type { SqlExecutor } from "@/lib/persistence/postgres";
 import type { LedgerEntry, Referral, ReferralStatus } from "@/lib/domain/types";
 import type { PatientPortalData, PortalPayoutHistoryItem } from "@/lib/portal/data";
 import { buildPatientPortalData } from "@/lib/portal/data";
+import { toMinorUnits } from "@/lib/portal/money";
 import { buildReferralUrl } from "@/lib/portal/referral-link";
 import { referralDemoModeEnabled, requireReferralDemoMode } from "@/lib/demo/config";
 
@@ -236,6 +237,12 @@ export async function getDemoPortalData(): Promise<PatientPortalData> {
     updatedAt: asDate(row.updated_at),
   }));
   const ledger = await sql.query<LedgerEntry>("SELECT id, referral_id AS \"referralId\", payout_request_id AS \"payoutRequestId\", type, amount_minor AS \"amountMinor\", currency, status, idempotency_key AS \"idempotencyKey\", effective_at AS \"effectiveAt\", created_at AS \"createdAt\" FROM reward_ledger WHERE referral_user_id=$1 ORDER BY created_at", [referralUserId]);
+  const ledgerRows = ledger.rows.map((row) => ({
+    ...row,
+    amountMinor: toMinorUnits(row.amountMinor, "portal ledger amount"),
+    effectiveAt: row.effectiveAt ? asDate(row.effectiveAt) : null,
+    createdAt: asDate(row.createdAt),
+  }));
   const payouts = await sql.query<{ id: string; amount_minor: number; status: string; paid_at: Date | string | null; iban_last4: string }>("SELECT p.id, p.amount_minor, p.status, p.paid_at, a.iban_last4 FROM payout_requests p JOIN payout_accounts a ON a.id=p.payout_account_id WHERE p.referral_user_id=$1 ORDER BY p.created_at DESC", [referralUserId]);
   const programme = await currentProgramme(sql);
   const payoutHistory: PortalPayoutHistoryItem[] = payouts.rows.map((row) => ({ id: row.id, amountMinor: Number(row.amount_minor), paidAt: row.paid_at ? asDate(row.paid_at) : new Date(), accountMask: `TEST ${row.iban_last4}` }));
@@ -245,7 +252,7 @@ export async function getDemoPortalData(): Promise<PatientPortalData> {
     referralUrl: buildReferralUrl(demoReferralCode),
     minimumWithdrawalMinor: programme.minimumWithdrawalMinor,
     payouts: payoutHistory,
-    ...buildPatientPortalData(referralModels, [...ledger.rows]),
+    ...buildPatientPortalData(referralModels, ledgerRows),
   };
 }
 

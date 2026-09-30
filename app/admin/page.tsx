@@ -1,7 +1,4 @@
 import { AdminConsole } from "@/components/admin/admin-console";
-import { DemoAdminConsole } from "@/components/admin/demo-admin-console";
-import { referralDemoModeEnabled } from "@/lib/demo/config";
-import { getDemoAdminData } from "@/lib/demo/data";
 import { beginLocalAdmin } from "@/lib/local/admin-actions";
 import { developmentAdminEnabled, requireLocalAdmin } from "@/lib/local/admin-access";
 import { getLocalReferralEngine, type AdminSection } from "@/lib/local/engine";
@@ -13,9 +10,6 @@ export const dynamic = "force-dynamic";
 export default async function AdminPage({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
   const { tab } = await searchParams;
   const selectedTab = tabs.has(tab as AdminSection) ? tab as AdminSection : "overview";
-  if (referralDemoModeEnabled()) {
-    return <DemoAdminConsole data={await getDemoAdminData()} tab={selectedTab} />;
-  }
   if (!developmentAdminEnabled()) {
     const session = await currentAdminSession();
     if (!hasAdminAccess(session)) notFound();

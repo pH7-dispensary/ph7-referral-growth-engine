@@ -86,10 +86,15 @@ function validJwksUrl(value: string | undefined): value is string {
   } catch { return false; }
 }
 
+const patientReferencePattern = /^pat_[a-z]{2}_[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
+const sha256LowercaseHexPattern = /^[a-f0-9]{64}$/;
+
 export function validateHandoffClaims(claims: JwtClaims, issuer: string, now: Date, maximumLifetimeSeconds = 600): VerifiedPatientHandoff {
   if (claims.iss !== issuer) throw new HandoffRejectedError();
   const patientReference = readBounded(claims.patient_reference, 3, 160);
-  const emailHash = readBounded(claims.email_hash, 16, 160);
+  if (!patientReferencePattern.test(patientReference)) throw new HandoffRejectedError();
+  const emailHash = readBounded(claims.email_hash, 64, 64);
+  if (!sha256LowercaseHexPattern.test(emailHash)) throw new HandoffRejectedError();
   const nonce = readBounded(claims.nonce, 16, 256);
   const issuedAt = readDate(claims.issued_at);
   const expiresAt = readDate(claims.expires_at);

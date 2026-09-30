@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { hmacDigest } from "@/lib/auth/crypto";
 import { HandoffRejectedError, LocalHmacHandoffVerifier, signTestHandoff } from "@/lib/auth/handoff";
+import { readHandoffToken } from "@/lib/auth/handoff-request";
 import { ReferralSessionService } from "@/lib/auth/session";
 import type { AuthRepository, SessionSubject, StoredSession, VerifiedAdminIdentity, VerifiedPatientHandoff } from "@/lib/auth/types";
 import { requireAuthorisedAdmin } from "@/lib/runtime/production-actions";
-import { verifyWebhookSignature } from "@/lib/webhook/signature";
+import { verifyWebhookSignature, webhookSignaturePayload } from "@/lib/webhook/signature";
 import { createHmac } from "node:crypto";
 import { hasAdminAccess, hasPatientAccess } from "@/lib/auth/authorization";
 
@@ -38,7 +39,7 @@ function service(repository = new MemoryAuthRepository()) {
   return new ReferralSessionService(repository, { patientSessionSecret: patientSecret, adminSessionSecret: adminSecret, handoffVerifier: new LocalHmacHandoffVerifier({ secret: signingSecret, issuer, environment: "test" }) });
 }
 function token(overrides: Partial<{ issuer: string; issuedAt: Date; expiresAt: Date; nonce: string }> = {}) {
-  return signTestHandoff({ issuer: overrides.issuer ?? issuer, patientReference: "synthetic-patient-11-4", emailHash: "a".repeat(64), issuedAt: overrides.issuedAt ?? new Date(now.getTime() - 1_000), expiresAt: overrides.expiresAt ?? new Date(now.getTime() + 60_000), nonce: overrides.nonce ?? "nonce-synthetic-11-4-abcdefghijkl" }, signingSecret);
+  return signTestHandoff({ issuer: overrides.issuer ?? issuer, patientReference: "pat_eu_synthetic_11_4", emailHash: "a".repeat(64), issuedAt: overrides.issuedAt ?? new Date(now.getTime() - 1_000), expiresAt: overrides.expiresAt ?? new Date(now.getTime() + 60_000), nonce: overrides.nonce ?? "nonce-synthetic-11-4-abcdefghijkl" }, signingSecret);
 }
 
 describe("Phase 11.4 hand-off and session foundation", () => {
@@ -80,6 +81,14 @@ describe("Phase 11.4 hand-off and session foundation", () => {
     expect(requireAuthorisedAdmin({ adminUserId: "admin-1", role: "FOUNDER", requestId: "request-1" })).toEqual({ adminUserId: "admin-1", requestId: "request-1" });
   });
 
+  it("accepts hand-off tokens from JSON and browser form POST bodies without using URL parameters", async () => {
+    const value = "header.payload.signature";
+    await expect(readHandoffToken(new Request("https://referral.test/api/auth/handoff", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ token: value }) }))).resolves.toBe(value);
+    const form = new FormData(); form.set("token", value);
+    await expect(readHandoffToken(new Request("https://referral.test/auth/handoff", { method: "POST", body: form }))).resolves.toBe(value);
+    await expect(readHandoffToken(new Request("https://referral.test/auth/handoff?token=leak", { method: "POST", body: new FormData() }))).rejects.toThrow();
+  });
+
   it("does not authorise an unauthenticated/patient/roleless request as an admin", () => {
     expect(hasAdminAccess(null)).toBe(false);
     expect(hasAdminAccess({ id: "patient", kind: "PATIENT", referralUserId: "user-1", tokenHash: "a", csrfTokenHash: "b", expiresAt: new Date(now.getTime() + 1), invalidatedAt: null })).toBe(false);
@@ -90,9 +99,13 @@ describe("Phase 11.4 hand-off and session foundation", () => {
 
   it("uses no local engine state to verify configured webhook signatures", () => {
     const body = '{"event_id":"synthetic"}'; const secret = "webhook-secret";
-    const signature = createHmac("sha256", secret).update(body).digest("hex");
-    expect(verifyWebhookSignature(body, signature, secret)).toBe(true);
-    expect(verifyWebhookSignature(body, signature, undefined)).toBe(false);
-    expect(verifyWebhookSignature(body, `${signature}00`, secret)).toBe(false);
+    const timestamp = now.toISOString();
+    const signature = createHmac("sha256", secret).update(webhookSignaturePayload(timestamp, body)).digest("hex");
+    expect(verifyWebhookSignature({ body, signature, timestamp, secret, now })).toBe(true);
+    expect(verifyWebhookSignature({ body, signature, timestamp, secret: undefined, now })).toBe(false);
+    expect(verifyWebhookSignature({ body, signature: `${signature}00`, timestamp, secret, now })).toBe(false);
+    expect(verifyWebhookSignature({ body, signature, timestamp: new Date(now.getTime() - 301_000).toISOString(), secret, now })).toBe(false);
+    expect(verifyWebhookSignature({ body, signature, timestamp: new Date(now.getTime() + 301_000).toISOString(), secret, now })).toBe(false);
+    expect(verifyWebhookSignature({ body, signature, timestamp: "not-a-date", secret, now })).toBe(false);
   });
 });

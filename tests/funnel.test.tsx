@@ -4,6 +4,7 @@ import { FriendFunnel } from "@/components/funnel/friend-funnel";
 import { LocalContinuation } from "@/components/funnel/local-continuation";
 import { captureEconomicsSnapshot } from "@/lib/domain/economics";
 import { FunnelAccessError, SyntheticAttributionService, isOpaqueAttributionId } from "@/lib/funnel/attribution";
+import { buildPatientDestinationUrl } from "@/lib/funnel/patient-destination";
 
 const service = () => new SyntheticAttributionService();
 const now = new Date("2026-09-23T12:00:00.000Z");
@@ -59,15 +60,24 @@ describe("opaque attribution foundation", () => {
 });
 
 describe("friend-funnel presentation", () => {
-  it("renders the friend incentive without a referrer identity or production redirect", () => {
+  it("renders the friend incentive as pending contract configuration without a referrer identity", () => {
     const resolution = service().resolveOffer("PH7-AVA-72", now);
     if (resolution.kind !== "available") throw new Error("Expected synthetic offer");
     const markup = renderToStaticMarkup(<FriendFunnel offer={resolution.offer} />);
-    expect(markup).toContain("€10 off your first consultation");
+    expect(markup).toContain("€10 friend incentive");
+    expect(markup).toContain("awaiting the approved pH7 checkout integration");
     expect(markup).toContain("Continue to pH7");
     expect(markup).not.toContain("synthetic-ava");
     expect(markup).not.toContain("ph7.health");
     expect(markup).not.toMatch(/https?:\/\//);
+  });
+
+  it("builds only the configured pH7 patient destination with an opaque attribution id", async () => {
+    const attribution = (await service().createOrResolveAttribution({ code: "PH7-AVA-72", journeyId: "00000000-0000-4000-8000-000000000006", now })).attribution;
+    const url = buildPatientDestinationUrl(attribution.attributionId, "https://patients.ph7.health");
+    expect(url).toBe(`https://patients.ph7.health/?attribution_id=${encodeURIComponent(attribution.attributionId)}`);
+    expect(() => buildPatientDestinationUrl(attribution.attributionId, "http://evil.test")).toThrow();
+    expect(() => buildPatientDestinationUrl("not-opaque", "https://patients.ph7.health")).toThrow();
   });
 
   it("shows only an opaque ID in the safe local continuation", async () => {

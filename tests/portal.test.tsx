@@ -1,6 +1,8 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { ReferralSummary } from "@/components/portal/referral-summary";
+import type { LedgerEntry } from "@/lib/domain/types";
+import { buildPatientPortalData } from "@/lib/portal/data";
 import { getSyntheticPatientPortalData } from "@/lib/portal/data";
 import { isDevelopmentPatientAccessEnabled } from "@/lib/portal/dev-access";
 import { isValidIban, maskIban, payoutRequestSchema } from "@/lib/portal/payout";
@@ -34,8 +36,25 @@ describe("patient referral portal", () => {
   it("creates a deterministic local referral link and a QR SVG from it", async () => {
     const link = buildReferralUrl("PH7-AVA-72");
     expect(link).toBe("http://localhost:3000/r/PH7-AVA-72");
+    expect(buildReferralUrl("PH7DEMO", "https://ph7-referral-growth-engine.vercel.app")).toBe("https://ph7-referral-growth-engine.vercel.app/r/PH7DEMO");
     await expect(createReferralQrSvg(link)).resolves.toContain("<svg");
     expect(() => buildReferralUrl("not a valid code")).toThrow("invalid format");
+  });
+
+  it("calculates portal balances from integer minor units without string concatenation", () => {
+    const now = new Date("2026-09-23T10:00:00.000Z");
+    const base = { id: "ledger", referralId: "ref", payoutRequestId: null, currency: "EUR" as const, status: "EFFECTIVE" as const, idempotencyKey: "key", effectiveAt: now, createdAt: now };
+    const ledger = [
+      { ...base, id: "credit-1", type: "CREDIT", amountMinor: "1000" },
+      { ...base, id: "credit-2", type: "CREDIT", amountMinor: "1000" },
+      { ...base, id: "payout", referralId: null, payoutRequestId: "payout-1", type: "PAYOUT", amountMinor: "-500" },
+      { ...base, id: "reversal", type: "REVERSAL", amountMinor: "-1000" },
+      { ...base, id: "pending", type: "CREDIT", amountMinor: "1000", status: "PENDING", effectiveAt: null },
+    ] as unknown as LedgerEntry[];
+    const totals = buildPatientPortalData([], ledger);
+    expect(totals.availableBalanceMinor).toBe(500);
+    expect(totals.pendingBalanceMinor).toBe(1000);
+    expect(totals.totalEarnedMinor).toBe(3000);
   });
 
   it("only enables synthetic patient access in development", () => {

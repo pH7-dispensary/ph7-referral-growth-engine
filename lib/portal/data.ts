@@ -1,6 +1,7 @@
 import { captureEconomicsSnapshot } from "@/lib/domain/economics";
 import type { LedgerEntry, Referral } from "@/lib/domain/types";
 import { formatEuro } from "@/lib/portal/format";
+import { sumMinorUnits, toMinorUnits } from "@/lib/portal/money";
 import { buildReferralUrl } from "@/lib/portal/referral-link";
 import { presentReferralStatus } from "@/lib/portal/status";
 
@@ -46,11 +47,11 @@ const syntheticLedger: LedgerEntry[] = [
 ];
 
 export function buildPatientPortalData(referrals: PatientPortalData["referrals"], ledger: LedgerEntry[]): Omit<PatientPortalData, "syntheticPatientName" | "referralCode" | "referralUrl" | "minimumWithdrawalMinor" | "payouts"> {
-  const effective = ledger.filter((entry) => entry.status === "EFFECTIVE").reduce((total, entry) => total + entry.amountMinor, 0);
-  const pending = ledger.filter((entry) => entry.status === "PENDING" && entry.type === "CREDIT").reduce((total, entry) => total + entry.amountMinor, 0);
-  const earned = ledger.filter((entry) => entry.type === "CREDIT" && entry.status !== "VOID").reduce((total, entry) => total + entry.amountMinor, 0);
+  const effective = sumMinorUnits(ledger.filter((entry) => entry.status === "EFFECTIVE").map((entry) => entry.amountMinor), "effective ledger amount");
+  const pending = sumMinorUnits(ledger.filter((entry) => entry.status === "PENDING" && entry.type === "CREDIT").map((entry) => entry.amountMinor), "pending ledger amount");
+  const earned = sumMinorUnits(ledger.filter((entry) => entry.type === "CREDIT" && entry.status !== "VOID").map((entry) => entry.amountMinor), "earned ledger amount");
   return {
-    currentRewardMinor: referrals[0]?.economics.referrerRewardMinor ?? 0,
+    currentRewardMinor: toMinorUnits(referrals[0]?.economics.referrerRewardMinor ?? 0, "current reward"),
     availableBalanceMinor: effective,
     pendingBalanceMinor: pending,
     totalEarnedMinor: earned,

@@ -1,4 +1,4 @@
-import { generateKeyPair, exportJWK, SignJWT, type JSONWebKeySet } from "jose";
+import { generateKeyPair, exportJWK, SignJWT, type JWSAlgorithm, type JSONWebKeySet } from "jose";
 import { describe, expect, it } from "vitest";
 import { HandoffRejectedError, handoffVerifierFromEnvironment, RemoteJwksHandoffVerifier, UnconfiguredJwksHandoffVerifier } from "@/lib/auth/handoff";
 
@@ -7,13 +7,14 @@ const issuer = "https://synthetic-handoff.test.invalid";
 const audience = "ph7-referral-growth-engine";
 const jwksUrl = "https://synthetic-jwks.test.invalid/.well-known/jwks.json";
 
-async function signer(kid: string) {
-  const keys = await generateKeyPair("RS256");
+async function signer(kid: string, algorithm: JWSAlgorithm = "RS256") {
+  const keys = await generateKeyPair(algorithm);
   const publicJwk = await exportJWK(keys.publicKey);
   return {
     kid,
+    algorithm,
     privateKey: keys.privateKey,
-    jwks: { keys: [{ ...publicJwk, kid, use: "sig", alg: "RS256" }] } satisfies JSONWebKeySet,
+    jwks: { keys: [{ ...publicJwk, kid, use: "sig", alg: algorithm }] } satisfies JSONWebKeySet,
   };
 }
 
@@ -24,11 +25,12 @@ async function handoff(privateKey: CryptoKey, kid: string, overrides: Partial<{
   notBefore: number;
   emailHash: string | null;
   nonce: string;
+  patientReference: string;
 }> = {}) {
   const issuedAt = overrides.issuedAt ?? Math.floor(now.getTime() / 1_000) - 1;
   const expiresAt = overrides.expiresAt ?? Math.floor(now.getTime() / 1_000) + 60;
   const payload = {
-    patient_reference: "synthetic-patient-jwks-11-6",
+    patient_reference: overrides.patientReference ?? "pat_eu_jwks_11_6",
     ...(overrides.emailHash === null ? {} : { email_hash: overrides.emailHash ?? "d".repeat(64) }),
     nonce: overrides.nonce ?? "nonce-synthetic-jwks-11-6-abcdefghijkl",
     issued_at: new Date(issuedAt * 1_000).toISOString(),
@@ -70,7 +72,7 @@ describe("Phase 11.6 remote JWKS hand-off verification", () => {
     const remote = verifier(() => identity.jwks, calls);
     const first = await remote.verify(await handoff(identity.privateKey, identity.kid), now);
     const second = await remote.verify(await handoff(identity.privateKey, identity.kid, { nonce: "nonce-synthetic-jwks-11-6-second" }), now);
-    expect(first).toMatchObject({ patientReference: "synthetic-patient-jwks-11-6", issuer, emailHash: "d".repeat(64) });
+    expect(first).toMatchObject({ patientReference: "pat_eu_jwks_11_6", issuer, emailHash: "d".repeat(64) });
     expect(second.nonce).toContain("second");
     expect(calls.count).toBe(1);
   });
@@ -88,6 +90,8 @@ describe("Phase 11.6 remote JWKS hand-off verification", () => {
     await expect(remote.verify(await handoff(identity.privateKey, identity.kid, { expiresAt: Math.floor(now.getTime() / 1_000) - 1 }), now)).rejects.toBeInstanceOf(HandoffRejectedError);
     await expect(remote.verify(await handoff(identity.privateKey, identity.kid, { notBefore: Math.floor(now.getTime() / 1_000) + 61 }), now)).rejects.toBeInstanceOf(HandoffRejectedError);
     await expect(remote.verify(await handoff(identity.privateKey, identity.kid, { emailHash: null }), now)).rejects.toBeInstanceOf(HandoffRejectedError);
+    await expect(remote.verify(await handoff(identity.privateKey, identity.kid, { emailHash: "D".repeat(64) }), now)).rejects.toBeInstanceOf(HandoffRejectedError);
+    await expect(remote.verify(await handoff(identity.privateKey, identity.kid, { patientReference: "pat_123" }), now)).rejects.toBeInstanceOf(HandoffRejectedError);
   });
 
   it("refreshes a matching key after a configured rotation without accepting an unapproved algorithm", async () => {
@@ -121,5 +125,6 @@ describe("Phase 11.6 remote JWKS hand-off verification", () => {
     expect(handoffVerifierFromEnvironment({})).toBeInstanceOf(UnconfiguredJwksHandoffVerifier);
     expect(handoffVerifierFromEnvironment({ PH7_HANDOFF_JWKS_URL: jwksUrl, PH7_HANDOFF_ISSUER: issuer, PH7_HANDOFF_AUDIENCE: audience, PH7_HANDOFF_ALLOWED_ALGORITHMS: "HS256", PH7_HANDOFF_MAX_TTL_SECONDS: "120" })).toBeInstanceOf(UnconfiguredJwksHandoffVerifier);
     expect(handoffVerifierFromEnvironment({ PH7_HANDOFF_JWKS_URL: jwksUrl, PH7_HANDOFF_ISSUER: issuer, PH7_HANDOFF_AUDIENCE: audience, PH7_HANDOFF_ALLOWED_ALGORITHMS: "RS256", PH7_HANDOFF_MAX_TTL_SECONDS: "120" })).toBeInstanceOf(RemoteJwksHandoffVerifier);
+    expect(handoffVerifierFromEnvironment({ PH7_HANDOFF_JWKS_URL: "https://app.ph7.health/api/v1/referral/jwks", PH7_HANDOFF_ISSUER: "https://app.ph7.health", PH7_HANDOFF_AUDIENCE: "ph7-referral-engine", PH7_HANDOFF_ALLOWED_ALGORITHMS: "ES256", PH7_HANDOFF_MAX_TTL_SECONDS: "300" })).toBeInstanceOf(RemoteJwksHandoffVerifier);
   });
 });

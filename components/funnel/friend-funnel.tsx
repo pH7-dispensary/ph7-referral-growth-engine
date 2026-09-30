@@ -1,4 +1,3 @@
-import { beginLocalFriendContinuation } from "@/lib/funnel/actions";
 import type { FriendOffer, FunnelUnavailableReason } from "@/lib/funnel/attribution";
 import { unavailableOfferCopy } from "@/lib/funnel/copy";
 import { formatEuro } from "@/lib/portal/format";
@@ -18,17 +17,17 @@ export function FriendFunnel({ offer }: { offer: FriendOffer }) {
       </section>
       <section className="friend-offer-card" aria-label="Your referral offer">
         <p className="eyebrow">Your welcome offer</p>
-        <strong>{formatEuro(offer.friendIncentiveMinor)} off your first consultation</strong>
-        <p>Your invitation is applied when you continue. There is no obligation to proceed.</p>
+        <strong>{formatEuro(offer.friendIncentiveMinor)} friend incentive</strong>
+        <p>This incentive is programme configuration awaiting the approved pH7 checkout integration. There is no obligation to proceed.</p>
       </section>
       <section className="funnel-steps" aria-labelledby="friend-steps-title">
         <p className="eyebrow">What happens next</p><h2 id="friend-steps-title">A simple start</h2>
-        <ol><li><span>1</span>Continue to the secure pH7 sign-up journey.</li><li><span>2</span>Choose the care that is right for you.</li><li><span>3</span>Your welcome offer is linked to this invitation.</li></ol>
+        <ol><li><span>1</span>Continue to the secure pH7 sign-up journey.</li><li><span>2</span>Choose the care that is right for you.</li><li><span>3</span>Your attribution reference is passed to pH7 without exposing referral economics.</li></ol>
       </section>
-      <form action={beginLocalFriendContinuation} className="funnel-cta">
+      <form action={`/r/${offer.code}/continue`} method="post" className="funnel-cta">
         <input name="code" type="hidden" value={offer.code} />
         <button className="button button-dark button-full" type="submit">Continue to pH7</button>
-        <p>Staging will show where production hand-off to pH7 begins.</p>
+        <p>Production hand-off begins after an opaque attribution reference is created.</p>
       </form>
     </FunnelFrame>
   );

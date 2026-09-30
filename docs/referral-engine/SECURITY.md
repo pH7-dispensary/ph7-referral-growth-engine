@@ -8,7 +8,7 @@ The public funnel treats all browser values as untrusted. The patient portal tru
 
 - Verify pH7 hand-off signature, issuer/audience, `iat`/`issued_at`, `exp`/`expires_at`, optional `nbf`, and single-use nonce before issuing a Referral Engine session.
 - Never recreate or access the pH7 PIN/password system; use only `patient_reference`, `email_hash`, temporal claims, and nonce.
-- Verify webhook signatures over the raw request body using a rotated secret strategy; reject malformed, stale, or unverifiable payloads.
+- Verify webhook signatures over `x-ph7-timestamp + "." + raw request body` using a rotated secret strategy; reject malformed, stale, future-dated, or unverifiable payloads.
 - Validate every payload schema server-side; rate-limit public endpoints and escape/validate redirect targets.
 - Store secrets exclusively in environment configuration; never commit them or expose them to browser bundles.
 - Encrypt/tokenise IBAN data at rest, restrict its access, and never place raw values in logs/audit metadata.
@@ -22,7 +22,7 @@ The public funnel treats all browser values as untrusted. The patient portal tru
 - The database enforces single-use hand-off nonces through a primary-key HMAC hash. Claiming a nonce, resolving/creating the minimal referral user, and creating a patient session occur in one serializable transaction.
 - Local HMAC hand-off signing exists exclusively for synthetic test/development fixtures and cannot be constructed in production. The future JWKS verifier is fail-closed until its separately authorised pH7 contract is implemented.
 - Production pages and actions derive identity/role from an HTTP-only session. Development synthetic portal/admin access is available only when `NODE_ENV === "development"`; test/production paths cannot use it.
-- Database-configured webhook verification uses a raw-body HMAC helper and a server-only future secret; it does not instantiate or consult synthetic local state.
+- Database-configured webhook verification uses a timestamp-bound raw-body HMAC helper and a server-only secret; it does not instantiate or consult synthetic local state.
 
 ## Phase 11.6 hand-off verifier controls
 
@@ -30,7 +30,14 @@ The public funnel treats all browser values as untrusted. The patient portal tru
 - `jose` verifies the compact JWS signature against the exact HTTPS JWKS endpoint and validates configured issuer, audience, expiry, not-before, issued-at age, and all required identity claims. The adapter also requires the legacy ISO temporal claims to match the signed standard JWT time claims exactly.
 - Keys are cached per warm runtime for ten minutes. An unknown `kid` may refresh only after the 30-second cooldown, allowing normal rotation without creating an unbounded refresh path. JWKS retrieval times out after five seconds and every verification/retrieval failure returns the same generic hand-off rejection.
 - The configured policy is all-or-nothing: `PH7_HANDOFF_JWKS_URL`, `PH7_HANDOFF_ISSUER`, `PH7_HANDOFF_AUDIENCE`, `PH7_HANDOFF_ALLOWED_ALGORITHMS`, and `PH7_HANDOFF_MAX_TTL_SECONDS` must all be valid before a remote verifier can be constructed. Missing or incomplete configuration has no network side effect and remains fail-closed.
-- This is a verification adapter only. It does not access pH7 data, create pH7 traffic, or replace the database-backed nonce/session controls. A real hand-off is still blocked until a separately authorised pH7 contract provides the precise values and sender-side implementation.
+- The confirmed contract is ES256 from `https://app.ph7.health/api/v1/referral/jwks`, issuer `https://app.ph7.health`, audience `ph7-referral-engine`, and maximum TTL 300 seconds. It does not access pH7 data, create pH7 traffic, or replace the database-backed nonce/session controls. If pH7 PR #1524 or the live JWKS key is unavailable, hand-off remains fail-closed.
+
+## Confirmed pH7 boundary controls
+
+- Browser hand-off accepts only a POST body `token`; it never accepts patient identity from form fields, query strings, or browser-controlled headers.
+- Referral CTA destinations are built only from server-side `PH7_PATIENTS_URL` and carry only `attribution_id`. Referrer identity, reward economics, and patient data never appear in the URL.
+- Public referral URLs come from server-side `REFERRAL_PUBLIC_URL` or Vercel's `VERCEL_URL`; deployed staging must not emit `localhost` links.
+- Friend incentives are displayed as pending programme configuration and must not be represented as a guaranteed checkout discount until pH7 and product approve that contract.
 
 ## Development safety
 
