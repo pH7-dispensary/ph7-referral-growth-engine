@@ -23,6 +23,7 @@
     "test:database:concurrency": "tsx scripts/test-referral-database-concurrency.ts",
     "test:database:persistence": "NODE_OPTIONS=--conditions=react-server tsx scripts/test-postgres-runtime-persistence.ts",
     "test:database:auth": "NODE_OPTIONS=--conditions=react-server tsx scripts/test-postgres-authentication.ts",
+    "test:e2e:referral": "NODE_OPTIONS=--conditions=react-server tsx scripts/test-referral-e2e.ts",
     "db:ensure-preview-fixture": "NODE_OPTIONS=--conditions=react-server tsx scripts/ensure-preview-synthetic-fixture.ts",
     "db:ensure-staging-demo": "NODE_OPTIONS=--conditions=react-server tsx scripts/ensure-staging-demo-fixture.ts",
     "db:cleanup-step112b": "tsx scripts/cleanup-step112b-concurrency-fixtures.ts",

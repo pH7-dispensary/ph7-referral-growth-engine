@@ -31,7 +31,7 @@ export class PostgresOperationalRepository {
       );
       if (!claimed.rows[0]) return { duplicate: true, unknownAttribution: false };
       const source = await tx.query<{ attribution_id: string; referrer_user_id: string; campaign_id: string; campaign_version: number; programme_settings_version: number; friend_incentive_minor: number; referrer_reward_minor: number; currency: "EUR"; qualification_event: "consultation.paid"; holding_period_days: number; reward_cap_minor: number | null }>(
-        "SELECT a.id AS attribution_id, rc.referral_user_id, a.campaign_id, a.campaign_version, a.programme_settings_version, a.friend_incentive_minor, a.referrer_reward_minor, a.currency, a.qualification_event, a.holding_period_days, a.reward_cap_minor FROM referral_attributions a JOIN referral_codes rc ON rc.id=a.referral_code_id WHERE a.public_id=$1",
+        "SELECT a.id AS attribution_id, rc.referral_user_id AS referrer_user_id, a.campaign_id, a.campaign_version, a.programme_settings_version, a.friend_incentive_minor, a.referrer_reward_minor, a.currency, a.qualification_event, a.holding_period_days, a.reward_cap_minor FROM referral_attributions a JOIN referral_codes rc ON rc.id=a.referral_code_id WHERE a.public_id=$1",
         [input.attributionPublicId],
       );
       const row = source.rows[0];
