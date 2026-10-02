@@ -18,6 +18,8 @@ The Referral Growth Engine is ready for isolated staging review. It is configure
 
 pH7 authenticates the patient, then submits the browser to `POST /auth/handoff` with a single `token` field. The token is a short-lived ES256 JWT. The Referral Engine verifies the token against pH7 public keys before creating its own patient session and redirects the browser to `/portal`. The token must not be placed in the URL.
 
+For iOS app shells that cannot safely hand a cross-domain POST directly to Safari, the Referral Engine exposes a browser-start shim at `GET /auth/handoff/start?code=<code>`. The `code` must be exactly 48 alphanumeric characters. The endpoint does not accept JWTs, create sessions, touch the database, or consume nonces; it returns `302` with `Cache-Control: no-store` to the fixed URL `https://app.ph7.health/referral/handoff/<code>`, where pH7 owns the single-use code and renders the auto-submitting POST form back to `/auth/handoff`.
+
 Required from pH7:
 
 - HTTPS JWKS URL listed above.

@@ -218,6 +218,8 @@ The hand-off transaction now calls an internal PostgreSQL code-issuance step bef
 
 Regression coverage in `scripts/test-postgres-authentication.ts` now proves that a valid asymmetric-JWKS hand-off issues an active code, a repeated hand-off for the same patient preserves that code, and the code remains retrievable after PostgreSQL repository/pool reinitialisation. Validation on 2026-10-02 passed: lint, typecheck, 50 unit tests, PostgreSQL asymmetric-JWKS auth/replay/code-issuance/restart test, and production build.
 
+The production iOS hand-off also gained `GET /auth/handoff/start?code=<code>` as a strict browser-start shim. It accepts only exactly 48 alphanumeric characters, returns `400` for missing/invalid values, and otherwise redirects with `Cache-Control: no-store` to the fixed pH7-owned one-time page `https://app.ph7.health/referral/handoff/<code>`. It does not accept JWTs, create sessions, call PostgreSQL, consume nonces, create referral users/codes, or alter attribution. `POST /auth/handoff` remains the only endpoint that can verify JWTs and create patient sessions.
+
 ## Staging review mode — Clickable product demo
 
 Acceptance: **implemented for isolated preview review only.** The root page now becomes a polished review landing page only when `APP_ENV=preview` and `REFERRAL_DEMO_MODE=true` are explicitly configured. It links to the patient portal, referred-friend journey, founder admin, and `/integration` status page. Without those flags, production authentication paths remain fail-closed.
