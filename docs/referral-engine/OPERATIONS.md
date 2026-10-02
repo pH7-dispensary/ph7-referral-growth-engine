@@ -62,6 +62,8 @@ Server-only production environment must contain: `REFERRAL_DATABASE_URL`, `ADMIN
 
 `npm run test:e2e:referral` is the safe automated referral lifecycle E2E. It creates unique synthetic referrer/friend identifiers, exercises PostgreSQL-backed attribution, webhook qualification, reward ledger, payout request/mark-paid, refund reversal, fraud review, duplicate/idempotency paths, and database integrity checks inside one transaction that rolls back at the end.
 
+Every successful production patient hand-off must leave the session's `referral_user_id` with exactly one active referral code. The Referral Engine issues this in the same PostgreSQL transaction that consumes the hand-off nonce and creates the patient session; repeated/concurrent valid hand-offs for the same patient must preserve the existing active code. If `/portal` loads but does not show a code/link, check `referral_codes` for that `referral_user_id`, then rerun `npm run test:database:auth` before deploying a fix. Do not create public/patient-supplied codes or accept referral-code values from the browser hand-off.
+
 `refer.ph7.health` is attached to the Vercel project, but registrar DNS must point the subdomain to Vercel before the public domain resolves. Required DNS at the provider:
 
 ```text

@@ -210,6 +210,14 @@ Production Vercel protection is `all_except_custom_domains`, so the custom domai
 
 Old synthetic review codes `PH7DEMO` and `PREVIEW11` were deactivated in the dedicated database for public production safety. Production smoke checks through the production Vercel alias confirmed public pages have no localhost or old preview URL leakage and no secret markers. The signed valid webhook remote test remains pending because the production webhook secret is correctly hidden; pH7 needs a secure handoff/rotation ceremony before their sender can use the same secret.
 
+## Production hand-off referral-code fix — 2026-10-02
+
+After pH7 fixed the mobile Refer sender to use a one-time app.ph7.health hand-off page that browser-POSTs the signed `token` field to `https://refer.ph7.health/auth/handoff`, the Referral Engine correctly verified the JWT, created the patient session, and rendered `/portal`, but newly created referral users had no active `referral_codes` row. The cause was inside `PostgresAuthRepository.consumeHandoffAndCreatePatientSession`: the serializable hand-off transaction consumed the nonce, resolved/created `referral_users`, and stored the session, but did not issue the patient's shareable referral code.
+
+The hand-off transaction now calls an internal PostgreSQL code-issuance step before session creation. It takes a transaction-scoped advisory lock per referral user, preserves any existing active code, and otherwise inserts one random `PH7`-prefixed uppercase code that satisfies the existing `referral_codes` constraints. This requires no schema change and keeps issuance idempotent under concurrent/repeated valid hand-offs. The production `/portal` page now shows the authenticated patient their referral code, canonical referral URL, and copy/share controls instead of only confirming that a secure session exists.
+
+Regression coverage in `scripts/test-postgres-authentication.ts` now proves that a valid asymmetric-JWKS hand-off issues an active code, a repeated hand-off for the same patient preserves that code, and the code remains retrievable after PostgreSQL repository/pool reinitialisation. Validation on 2026-10-02 passed: lint, typecheck, 50 unit tests, PostgreSQL asymmetric-JWKS auth/replay/code-issuance/restart test, and production build.
+
 ## Staging review mode — Clickable product demo
 
 Acceptance: **implemented for isolated preview review only.** The root page now becomes a polished review landing page only when `APP_ENV=preview` and `REFERRAL_DEMO_MODE=true` are explicitly configured. It links to the patient portal, referred-friend journey, founder admin, and `/integration` status page. Without those flags, production authentication paths remain fail-closed.

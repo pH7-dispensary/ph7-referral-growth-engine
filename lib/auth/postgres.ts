@@ -1,5 +1,6 @@
 import "server-only";
 
+import { randomBytes } from "node:crypto";
 import type { AuthRepository, SessionSubject, StoredSession, VerifiedAdminIdentity, VerifiedPatientHandoff } from "@/lib/auth/types";
 import type { SqlExecutor } from "@/lib/persistence/postgres";
 
@@ -21,6 +22,10 @@ function subjectFromRow(row: Pick<SessionRow, "subject_type" | "referral_user_id
   throw new Error("Stored session subject is invalid.");
 }
 
+function referralCodeCandidate(): string {
+  return `PH7${randomBytes(5).toString("hex").toUpperCase()}`;
+}
+
 /** PostgreSQL implementation; all token and nonce inputs are already one-way HMACs. */
 export class PostgresAuthRepository implements AuthRepository {
   constructor(private readonly sql: SqlExecutor) {}
@@ -38,6 +43,7 @@ export class PostgresAuthRepository implements AuthRepository {
       );
       const referralUserId = user.rows[0]?.id;
       if (!referralUserId) throw new Error("Referral user could not be resolved.");
+      await this.ensureActiveReferralCode(tx, referralUserId);
       await tx.query(
         "INSERT INTO referral_auth_sessions (subject_type,referral_user_id,session_token_hash,csrf_token_hash,expires_at) VALUES ('PATIENT',$1,$2,$3,$4)",
         [referralUserId, input.tokenHash, input.csrfTokenHash, input.expiresAt],
@@ -79,5 +85,19 @@ export class PostgresAuthRepository implements AuthRepository {
   async findPatientReferralCode(referralUserId: string): Promise<string | null> {
     const result = await this.sql.query<{ code: string }>("SELECT code FROM referral_codes WHERE referral_user_id=$1 AND is_active=true LIMIT 1", [referralUserId]);
     return result.rows[0]?.code ?? null;
+  }
+
+  private async ensureActiveReferralCode(sql: SqlExecutor, referralUserId: string): Promise<string> {
+    await sql.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`referral-code:${referralUserId}`]);
+    const existing = await sql.query<{ code: string }>("SELECT code FROM referral_codes WHERE referral_user_id=$1 AND is_active=true LIMIT 1", [referralUserId]);
+    if (existing.rows[0]?.code) return existing.rows[0].code;
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      const inserted = await sql.query<{ code: string }>(
+        "INSERT INTO referral_codes (referral_user_id,code,is_active) VALUES ($1,$2,true) ON CONFLICT (code) DO NOTHING RETURNING code",
+        [referralUserId, referralCodeCandidate()],
+      );
+      if (inserted.rows[0]?.code) return inserted.rows[0].code;
+    }
+    throw new Error("Referral code could not be issued.");
   }
 }
