@@ -24,11 +24,15 @@ export function webhookSignaturePayload(timestamp: string, body: string): string
   return `${timestamp}.${body}`;
 }
 
+export function createWebhookSignature(input: { body: string; secret: string; timestamp: string }): string {
+  return createHmac("sha256", input.secret).update(webhookSignaturePayload(input.timestamp, input.body)).digest("hex");
+}
+
 /** Timestamp-bound raw-body HMAC check shared by the runtime route without consulting local state. */
 export function verifyWebhookSignature(input: { body: string; signature: string; secret: string | undefined; timestamp: string | null | undefined; now?: Date; toleranceSeconds?: number }): boolean {
   const { body, signature, secret, timestamp, now = new Date(), toleranceSeconds = defaultToleranceSeconds } = input;
   if (!secret || !signature || !/^[a-f0-9]{64}$/i.test(signature)) return false;
   if (!isFreshWebhookTimestamp(timestamp, now, toleranceSeconds)) return false;
-  const expected = createHmac("sha256", secret).update(webhookSignaturePayload(timestamp!, body)).digest("hex");
+  const expected = createWebhookSignature({ body, secret, timestamp: timestamp! });
   return secureEqual(expected, signature);
 }
