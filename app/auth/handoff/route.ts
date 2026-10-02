@@ -21,7 +21,7 @@ function unavailable(status = 405) {
 
 function logRejected(stage: "read_token" | "begin_session" | "unexpected", error: unknown): void {
   const reason = error instanceof HandoffRejectedError
-    ? "HANDOFF_VERIFICATION_REJECTED"
+    ? error.reason
     : error instanceof Error && error.message.includes("nonce")
       ? "HANDOFF_REPLAY_REJECTED"
       : error instanceof Error && error.message.includes("Referral code")
