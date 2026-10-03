@@ -54,6 +54,14 @@ h1 { font-size:clamp(36px,9vw,58px); letter-spacing:-.055em; line-height:1.02; m
 .portal-nav { display:flex; gap:8px; }
 .portal-nav a { display:inline-flex; align-items:center; min-height:44px; padding:0 12px; color:var(--portal-muted); font-size:14px; font-weight:700; text-decoration:none; border-radius:999px; }
 .portal-nav a:hover { background:var(--portal-soft); color:var(--portal-accent); }
+.portal-nav .portal-back { min-width:44px; justify-content:center; color:var(--portal-text); }
+.portal-back-mobile { display:none; }
+@media (max-width:600px) {
+  .portal-nav { gap:4px; }
+  .portal-nav .portal-back { padding:0; }
+  .portal-back-mobile { display:block; font-size:28px; font-weight:400; line-height:1; }
+  .portal-back-desktop { display:none; }
+}
 .portal-intro { display:grid; gap:22px; margin-bottom:28px; }
 .portal-hero h1 span { white-space:normal; display:inline-block; }
 .portal-hero h1 span:last-child { color:var(--ink); text-decoration:underline; text-decoration-color:var(--green); text-decoration-thickness:.08em; text-underline-offset:.12em; }

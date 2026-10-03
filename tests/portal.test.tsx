@@ -2,6 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { ReferralSummary } from "@/components/portal/referral-summary";
 import { PortalDashboard } from "@/components/portal/portal-dashboard";
+import { BackToPh7 } from "@/components/portal/back-to-ph7";
 import { PayoutForm } from "@/components/portal/payout-form";
 import type { LedgerEntry } from "@/lib/domain/types";
 import { buildPatientPortalData } from "@/lib/portal/data";
@@ -13,6 +14,15 @@ import { buildReferralUrl } from "@/lib/portal/referral-link";
 import { presentReferralStatus } from "@/lib/portal/status";
 
 describe("patient referral portal", () => {
+  it("provides a session-preserving fixed Patient App return link", () => {
+    const markup = renderToStaticMarkup(<PortalDashboard data={getSyntheticPatientPortalData()} qrSvg="<svg />" />);
+    expect(markup).toContain('href="https://app.ph7.health/" aria-label="Back to pH7"');
+    expect(markup).toContain('referrerPolicy="no-referrer"');
+    expect(markup).toContain("← Back to pH7");
+    expect(markup).not.toContain("history.back");
+    expect(markup).not.toContain("/api/auth/logout");
+    expect(renderToStaticMarkup(<BackToPh7 />)).not.toContain('target="_blank"');
+  });
   it("renders campaign values, holding period and an actionable empty referral state", () => {
     const portal = { ...getSyntheticPatientPortalData(), friendIncentiveMinor: 750, currentRewardMinor: 1250, holdingPeriodDays: 9, referrals: [], payouts: [] };
     const markup = renderToStaticMarkup(<PortalDashboard data={portal} qrSvg="<svg />" />);

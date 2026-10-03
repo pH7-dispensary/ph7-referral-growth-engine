@@ -9,6 +9,7 @@ import Link from "next/link";
 import { withdrawalPresentation } from "@/lib/portal/withdrawal";
 import { Disclosure } from "@/components/portal/disclosure";
 import { SectionLink } from "@/components/portal/section-link";
+import { BackToPh7 } from "@/components/portal/back-to-ph7";
 
 const payoutLabels = { REQUESTED: "Withdrawal requested", PAID: "Paid", REJECTED: "Not approved", CANCELLED: "Cancelled" };
 
@@ -38,7 +39,7 @@ export function PortalDashboard({
       <a className="portal-skip-link" href="#invite">Skip to your invitation</a>
       <header className="portal-header">
         <Link className="brand" href="/portal" aria-label="pH7 Referral Portal"><Logo /></Link>
-        <nav className="portal-nav" aria-label="Your referral space"><SectionLink target="rewards">Rewards</SectionLink><SectionLink target="activity">Activity</SectionLink></nav>
+        <nav className="portal-nav" aria-label="Your referral space"><SectionLink target="rewards">Rewards</SectionLink><SectionLink target="activity">Activity</SectionLink><BackToPh7 /></nav>
       </header>
 
       <div className="portal-intro">
