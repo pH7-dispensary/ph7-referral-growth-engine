@@ -25,7 +25,7 @@ export class PostgresOperationalRepository {
     if (!Number.isSafeInteger(input.friendIncentiveMinor) || !Number.isSafeInteger(input.referrerRewardMinor) || input.friendIncentiveMinor < 0 || input.referrerRewardMinor < 0) throw new Error("Invalid campaign economics.");
     return this.sql.transaction(async (tx) => {
       await tx.query("LOCK TABLE campaigns IN SHARE ROW EXCLUSIVE MODE");
-      const old = await tx.query<{ version: number; holding_period_days: number }>("SELECT version,holding_period_days FROM campaigns ORDER BY version DESC LIMIT 1 FOR UPDATE");
+      const old = await tx.query<{ id: string; version: number; is_active: boolean; friend_incentive_minor: number; referrer_reward_minor: number; holding_period_days: number }>("SELECT id,version,is_active,friend_incentive_minor,referrer_reward_minor,holding_period_days FROM campaigns ORDER BY version DESC LIMIT 1 FOR UPDATE");
       const version = (old.rows[0]?.version ?? 0) + 1;
       const holding = input.holdingPeriodDays ?? old.rows[0]?.holding_period_days ?? 0;
       await tx.query("UPDATE campaigns SET is_active=false WHERE is_active");
@@ -34,7 +34,9 @@ export class PostgresOperationalRepository {
       await tx.query(`INSERT INTO programme_settings(version,programme_enabled,minimum_withdrawal_minor)
         VALUES ((SELECT COALESCE(MAX(version),0)+1 FROM programme_settings),$1,
         COALESCE((SELECT minimum_withdrawal_minor FROM programme_settings ORDER BY version DESC LIMIT 1),0))`, [input.active]);
-      await this.audit(tx,"PROGRAMME_UPDATED","campaign",created.rows[0].id,actor);
+      await this.audit(tx,"PROGRAMME_UPDATED","campaign",created.rows[0].id,actor,
+        old.rows[0] ? { version:old.rows[0].version, active:old.rows[0].is_active, friendIncentiveMinor:Number(old.rows[0].friend_incentive_minor), referrerRewardMinor:Number(old.rows[0].referrer_reward_minor), holdingPeriodDays:old.rows[0].holding_period_days } : null,
+        { version, active:input.active, friendIncentiveMinor:input.friendIncentiveMinor, referrerRewardMinor:input.referrerRewardMinor, holdingPeriodDays:holding });
       return {id:created.rows[0].id,version,active:input.active,friendIncentiveMinor:input.friendIncentiveMinor,referrerRewardMinor:input.referrerRewardMinor,holdingPeriodDays:holding};
     });
   }
@@ -114,7 +116,7 @@ export class PostgresOperationalRepository {
         const lifecycle=new ReferralLifecycleService({transaction:async work=>work(repo)});
         await lifecycle.transitionInTransaction(repo,{referralId:value.id,toStatus:target,source:"MANUAL",idempotencyKey:`fraud-resolution:${flagId}:${decision}`});
       }
-      await tx.query("UPDATE fraud_flags SET status=$2::fraud_flag_status,resolved_at=CASE WHEN $2::fraud_flag_status IN ('APPROVED','REJECTED') THEN now() ELSE NULL END WHERE id=$1",[flagId,decision]);
+      await tx.query("UPDATE fraud_flags SET status=$2::fraud_flag_status,resolved_by_admin_user_id=$3,resolved_at=CASE WHEN $2::fraud_flag_status IN ('APPROVED','REJECTED') THEN now() ELSE NULL END WHERE id=$1",[flagId,decision,actor?.adminUserId ?? null]);
       await this.audit(tx,`FRAUD_${decision}`,"fraud_flag",flagId,actor);
       return {id:flagId,status:decision};
     });
@@ -168,5 +170,5 @@ export class PostgresOperationalRepository {
     });
   }
   async auditHistory(limit = 100) { const result = await this.sql.query<{ id: string; action: string; subject_type: string; subject_id: string | null; created_at: Date | string }>("SELECT id, action, subject_type, subject_id, created_at FROM admin_audit_log ORDER BY created_at DESC LIMIT $1", [limit]); return result.rows.map((row) => ({ id: row.id, action: row.action, subjectType: row.subject_type, subjectId: row.subject_id, createdAt: new Date(row.created_at) })); }
-  private async audit(tx: SqlExecutor, action: string, subjectType: string, subjectId: string, actor?: OperationalAuditActor) { await tx.query("INSERT INTO admin_audit_log (admin_user_id,action,subject_type,subject_id,request_id) VALUES ($1,$2,$3,$4,$5)", [actor?.adminUserId ?? null, action, subjectType, subjectId, actor?.requestId ?? null]); }
+  private async audit(tx: SqlExecutor, action: string, subjectType: string, subjectId: string, actor?: OperationalAuditActor, beforeData: Record<string, unknown> | null = null, afterData: Record<string, unknown> | null = null) { await tx.query("INSERT INTO admin_audit_log (admin_user_id,action,subject_type,subject_id,request_id,before_data,after_data) VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7::jsonb)", [actor?.adminUserId ?? null, action, subjectType, subjectId, actor?.requestId ?? null, beforeData ? JSON.stringify(beforeData) : null, afterData ? JSON.stringify(afterData) : null]); }
 }

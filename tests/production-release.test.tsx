@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import IntegrationPage from "@/app/integration/page";
 import { referralPublicOrigin } from "@/lib/portal/public-url";
 import { buildReferralUrl } from "@/lib/portal/referral-link";
+import FounderDashboardReview from "@/app/dev/founder-dashboard/page";
 
 afterEach(() => vi.unstubAllEnvs());
 
@@ -31,5 +32,9 @@ describe("production release boundaries", () => {
     vi.stubEnv("VERCEL_ENV", "preview");
     vi.stubEnv("REFERRAL_DEMO_MODE", environment === "preview" ? "true" : "false");
     expect(IntegrationPage()).toBeTruthy();
+  });
+  it("does not expose the founder dashboard visual fixture outside development", async()=>{
+    vi.stubEnv("NODE_ENV","production");
+    await expect(FounderDashboardReview({searchParams:Promise.resolve({})})).rejects.toThrow("NEXT_HTTP_ERROR_FALLBACK;404");
   });
 });
