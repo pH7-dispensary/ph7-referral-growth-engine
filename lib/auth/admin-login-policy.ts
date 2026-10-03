@@ -2,11 +2,41 @@ import "server-only";
 import type { SqlExecutor } from "@/lib/persistence/postgres";
 
 const loginSubject = "00000000-0000-4000-8000-000000000001";
-export function adminLoginOriginAllowed(request: Request): boolean {
+export type AdminLoginOriginDecision =
+  | { readonly allowed: true; readonly normalization?: "equivalent-origin-serialization" | "safari-private-opaque-origin" }
+  | { readonly allowed: false; readonly reason: "missing-origin" | "opaque-origin" | "cross-site" | "origin-scheme" | "origin-host" | "origin-port" | "origin-invalid" };
+
+export function adminLoginOriginDecision(request: Request): AdminLoginOriginDecision {
   const origin = request.headers.get("origin");
-  if (!origin || request.headers.get("sec-fetch-site") === "cross-site") return false;
-  if (process.env.NODE_ENV === "production") return origin === "https://refer.ph7.health";
-  try { const url = new URL(origin); return url.origin === new URL(request.url).origin && ["localhost", "127.0.0.1"].includes(url.hostname); } catch { return false; }
+  if (!origin) return { allowed: false, reason: "missing-origin" };
+  if (request.headers.get("sec-fetch-site") === "cross-site") return { allowed: false, reason: "cross-site" };
+  if (origin === "null") {
+    if (process.env.NODE_ENV === "production"
+      && new URL(request.url).origin === "https://refer.ph7.health"
+      && request.headers.get("sec-fetch-site") === "same-origin"
+      && request.headers.get("sec-fetch-mode") === "navigate"
+      && request.headers.get("sec-fetch-dest") === "document") {
+      return { allowed: true, normalization: "safari-private-opaque-origin" };
+    }
+    return { allowed: false, reason: "opaque-origin" };
+  }
+  try {
+    const url = new URL(origin);
+    if (process.env.NODE_ENV === "production") {
+      if (url.protocol !== "https:") return { allowed: false, reason: "origin-scheme" };
+      if (url.hostname !== "refer.ph7.health") return { allowed: false, reason: "origin-host" };
+      if (url.port) return { allowed: false, reason: "origin-port" };
+      if (url.username || url.password || url.pathname !== "/" || url.search || url.hash) return { allowed: false, reason: "origin-invalid" };
+      return origin === "https://refer.ph7.health" ? { allowed: true } : { allowed: true, normalization: "equivalent-origin-serialization" };
+    }
+    return url.origin === new URL(request.url).origin && ["localhost", "127.0.0.1"].includes(url.hostname)
+      ? { allowed: true }
+      : { allowed: false, reason: "origin-host" };
+  } catch { return { allowed: false, reason: "origin-invalid" }; }
+}
+
+export function adminLoginOriginAllowed(request: Request): boolean {
+  return adminLoginOriginDecision(request).allowed;
 }
 /** Durable global throttle for the sole founder. No IP, email or password in audit data. */
 export async function claimAdminLoginAttempt(sql: SqlExecutor, subjectId = loginSubject): Promise<boolean> {

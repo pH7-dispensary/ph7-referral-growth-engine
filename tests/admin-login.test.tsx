@@ -26,6 +26,26 @@ describe("private founder login", () => {
   it("rejects oversized passwords without KDF work", async () => { await expect(new FounderPasswordProvider().verifyAdminIdentity({email,password:"a".repeat(1025)})).rejects.toThrow(); });
   it("rejects cross-origin, missing-origin and forged local-origin production requests before DB/session writes", async () => { for (const origin of ["https://evil.example","http://localhost:3000",""]) { expect((await POST(request(undefined,origin))).status).toBe(403); } expect(mocks.sql).not.toHaveBeenCalled(); expect(mocks.write).not.toHaveBeenCalled(); });
   it("rejects cross-site fetches despite a matching origin", () => { const r=request(); r.headers.set("sec-fetch-site","cross-site"); expect(adminLoginOriginAllowed(r)).toBe(false); });
+  it.each(["https://refer.ph7.health.evil.example", "https://refer.ph7.health:444", "https://user@refer.ph7.health", "https://refer.ph7.health/path", "https://refer.ph7.health/?query=1"])('rejects a non-origin production Origin header: %s', origin => { expect(adminLoginOriginAllowed(request(undefined, origin))).toBe(false); });
+  it("accepts Safari's opaque private-browsing origin only for a canonical same-origin document navigation", () => {
+    const safari = request();
+    safari.headers.set("origin", "null");
+    safari.headers.set("sec-fetch-site", "same-origin");
+    safari.headers.set("sec-fetch-mode", "navigate");
+    safari.headers.set("sec-fetch-dest", "document");
+    expect(adminLoginOriginAllowed(safari)).toBe(true);
+    for (const [header, value] of [["sec-fetch-site", "cross-site"], ["sec-fetch-mode", "cors"], ["sec-fetch-dest", "empty"]] as const) {
+      const rejected = request();
+      rejected.headers.set("origin", "null");
+      rejected.headers.set("sec-fetch-site", "same-origin");
+      rejected.headers.set("sec-fetch-mode", "navigate");
+      rejected.headers.set("sec-fetch-dest", "document");
+      rejected.headers.set(header, value);
+      expect(adminLoginOriginAllowed(rejected)).toBe(false);
+    }
+    const wrongHost = new Request("https://evil.example/admin/login/submit", { method: "POST", headers: safari.headers });
+    expect(adminLoginOriginAllowed(wrongHost)).toBe(false);
+  });
   it("creates a session only after successful identity verification with a fixed redirect", async () => { const response=await POST(request(undefined,undefined,"https://evil.example/admin/login/submit")); expect(response.status).toBe(303); expect(response.headers.get("location")).toBe("https://refer.ph7.health/admin"); expect(response.headers.get("cache-control")).toBe("no-store"); expect(mocks.begin).toHaveBeenCalledWith({emailHash:credential.emailHash,role:"FOUNDER"}); expect(mocks.write).toHaveBeenCalledOnce(); });
   it("failed passwords never create sessions or reflect submitted details", async () => { const response=await POST(request(new URLSearchParams({email,password:"wrong"}).toString())); expect(response.headers.get("location")).toBe("https://refer.ph7.health/admin/login?error=1"); expect(mocks.begin).not.toHaveBeenCalled(); expect(mocks.write).not.toHaveBeenCalled(); });
   it("enforces durable throttle failure and DB unavailability before password/session work", async () => { mocks.claim.mockResolvedValue(false); await POST(request()); expect(mocks.begin).not.toHaveBeenCalled(); mocks.claim.mockRejectedValue(new Error("synthetic failure")); await POST(request()); expect(mocks.write).not.toHaveBeenCalled(); });
