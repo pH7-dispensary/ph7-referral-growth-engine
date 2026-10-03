@@ -8,6 +8,8 @@ POST login enforces the canonical production Origin, fixed redirects and 4096-by
 
 To rerun restart/concurrency authentication tests, use `PH7_LOCAL_ADMIN_INTEGRATION=true npx vitest run tests/admin-login-postgres.test.ts` with only the disposable loopback PostgreSQL instance at port 55473/database `ph7_release_test`; the harness overrides its URL and uses synthetic credentials. It never loads production credentials or database configuration. Keep its immutable audit fixtures local and stop the test server after verification.
 
+Founder login is deployed at `/admin/login`: application commit `a77a406`, READY deployment `dpl_9FZbB9tsp3wYgFs5SWqBDUmpCDfX`. The real authorised account successfully authenticated in production; protected access, secure cookie flags, logout and session revocation passed with assertion-only output. Verification left no active smoke session. The empty public login form is accessible, while credentials are sensitive/server-only and admin data remains protected. The operational dashboard is not yet composed. Existing patient credentials/session secrets, payout storage configuration and all financial records were untouched.
+
 ## Current staging mode
 
 The isolated Vercel project `ph7-referral-growth-engine` uses the dedicated Referral Growth Engine PostgreSQL/Supabase database. Preview review mode is explicit: `APP_ENV=preview` and `REFERRAL_DEMO_MODE=true` must both be configured. Demo mode seeds and reads synthetic records only, and it never creates a real pH7, GA4, banking, payment, DNS, or patient-data connection.
