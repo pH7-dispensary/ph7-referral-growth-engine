@@ -17,7 +17,7 @@ describe("patient referral portal", () => {
     const portal = { ...getSyntheticPatientPortalData(), friendIncentiveMinor: 750, currentRewardMinor: 1250, holdingPeriodDays: 9, referrals: [], payouts: [] };
     const markup = renderToStaticMarkup(<PortalDashboard data={portal} qrSvg="<svg />" />);
     expect(markup).toContain("Give €7.50.");
-    expect(markup).toContain("Get €12.50.");
+    expect(markup).toContain("Get €12.50 cash.");
     expect(markup).toContain("9-day holding period");
     expect(markup).toContain("No referrals yet.");
     expect(markup).toContain("Share invite");
@@ -56,13 +56,13 @@ describe("patient referral portal", () => {
     const data = getSyntheticPatientPortalData();
     const action = async () => ({ status: "success" as const, message: "Synthetic request accepted" });
     const ready = renderToStaticMarkup(<PortalDashboard data={data} qrSvg="<svg />" payoutAction={action} />);
-    expect(ready).toContain("Withdraw €20");
+    expect(ready).toContain("Withdraw cash");
     expect(ready).not.toContain("Development preview");
     const belowMinimum = renderToStaticMarkup(<PortalDashboard data={{...data, availableBalanceMinor:500}} qrSvg="<svg />" payoutAction={action} />);
     expect(belowMinimum).toContain("Withdrawals start at €10.");
-    expect(belowMinimum).not.toContain("Withdraw €5");
+    expect(belowMinimum).not.toContain('withdrawal-cta');
     const unavailable = renderToStaticMarkup(<PortalDashboard data={data} qrSvg="<svg />" />);
-    expect(unavailable).not.toContain("Withdraw €20");
+    expect(unavailable).not.toContain('withdrawal-cta');
     expect(unavailable).toContain("Online withdrawals are not available yet.");
   });
 
@@ -78,8 +78,8 @@ describe("patient referral portal", () => {
   });
 
   it.each([
-    ["PAYABLE", "EFFECTIVE", false, "€10 available"],
-    ["QUALIFIED", "PENDING", false, "€10 pending"],
+    ["PAYABLE", "EFFECTIVE", false, "€10 cash available"],
+    ["QUALIFIED", "PENDING", false, "€10 cash pending"],
     ["FRAUD_REVIEW", undefined, false, "€15 under review"],
     ["REFUNDED", "EFFECTIVE", true, "Reward reversed"],
     ["CANCELLED", undefined, false, "No reward payable"],

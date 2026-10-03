@@ -24,11 +24,15 @@ export interface PatientPortalData {
   currentRewardMinor: number;
   holdingPeriodDays: number;
   availableBalanceMinor: number;
+  /** Ledger cash less existing REQUESTED withdrawals; not a client-computed balance. */
+  withdrawableBalanceMinor?: number;
+  withdrawalUnderReview?: boolean;
   pendingBalanceMinor: number;
   totalEarnedMinor: number;
   minimumWithdrawalMinor: number;
   referrals: Array<Referral & { patientLabel: string; ledgerCredit?: Pick<LedgerEntry, "status" | "amountMinor">; hasLedgerReversal?: boolean }>;
   payouts: PortalPayoutHistoryItem[];
+  payoutAccount?: { id: string; accountMask: string };
 }
 
 function snapshot(rewardMinor: number, campaignVersion: number) {

@@ -55,7 +55,7 @@ h1 { font-size:clamp(36px,9vw,58px); letter-spacing:-.055em; line-height:1.02; m
 .portal-nav a { display:inline-flex; align-items:center; min-height:44px; padding:0 12px; color:var(--portal-muted); font-size:14px; font-weight:700; text-decoration:none; border-radius:999px; }
 .portal-nav a:hover { background:var(--portal-soft); color:var(--portal-accent); }
 .portal-intro { display:grid; gap:22px; margin-bottom:28px; }
-.portal-hero h1 span { white-space:nowrap; display:inline-block; }
+.portal-hero h1 span { white-space:normal; display:inline-block; }
 .portal-hero h1 span:last-child { color:var(--ink); text-decoration:underline; text-decoration-color:var(--green); text-decoration-thickness:.08em; text-underline-offset:.12em; }
 .portal-text-link { color:var(--portal-accent); font-size:13px; font-weight:700; text-underline-offset:4px; display:inline-flex; align-items:center; gap:6px; min-height:44px; }
 .portal-hero .portal-text-link { margin-top:2px; }
@@ -196,6 +196,12 @@ h1 { font-size:clamp(36px,9vw,58px); letter-spacing:-.055em; line-height:1.02; m
 .portal-shell .payout-feedback { min-height:20px; }
 .portal-shell .payout-feedback .form-result { margin:0; }
 .portal-shell .payout-form input,.portal-shell .payout-form select { transition:border-color 110ms ease-out; }
+.portal-shell .payout-form input,.portal-shell .payout-form select { font-size:16px; scroll-margin-block:100px; }
+.portal-shell .saved-payout-account .portal-text-link { background:none; border:0; padding:0; text-align:left; }
+.portal-shell .cash-explainer { color:var(--portal-muted); font-size:14px; line-height:1.6; margin-bottom:18px; }
+.portal-shell .payout-confirmation { scroll-margin-block:24px; }
+.portal-shell .payout-confirmation:focus-visible { outline:3px solid var(--portal-accent); outline-offset:5px; border-radius:8px; }
+.portal-shell section:focus-visible,.portal-shell #how-title:focus-visible { outline:3px solid var(--portal-accent); outline-offset:5px; border-radius:8px; }
 .portal-shell .portal-nav a:focus-visible,.portal-shell summary:focus-visible { background:var(--portal-soft); }
 @media (hover:hover) and (pointer:fine) {
   .portal-shell .button:hover:not(:disabled),.portal-shell .share-actions .button:hover { transform:translateY(-1px); }

@@ -10,6 +10,11 @@ import { currentPatientSession } from "@/lib/auth/server";
 import { hasPatientAccess } from "@/lib/auth/authorization";
 import { getPostgresExecutor } from "@/lib/persistence/node-postgres";
 import { redirect } from "next/navigation";
+import { randomUUID } from "node:crypto";
+import { payoutStorageConfigured } from "@/lib/portal/payout-encryption";
+import { requestPatientPayout } from "@/lib/portal/actions";
+import { csrfCookieName } from "@/lib/auth/server";
+import { cookies } from "next/headers";
 
 export const dynamic = "force-dynamic";
 
@@ -27,7 +32,10 @@ export default async function PortalPage() {
     const data = await getPostgresPatientPortalData(getPostgresExecutor(), session.referralUserId);
     if (!data) return <main className="entry-shell"><section className="entry-card"><p className="eyebrow">pH7 Refer</p><h1>Your referral invite is being prepared.</h1><p className="entry-copy">Please try again shortly. If this continues, contact pH7 support.</p></section></main>;
     const qrSvg = await createReferralQrSvg(data.referralUrl);
-    return <PortalDashboard data={data} qrSvg={qrSvg} payoutNote="pH7 reviews payouts manually. You can follow existing requests in payout history." />;
+    return <PortalDashboard data={data} qrSvg={qrSvg}
+      payoutAction={payoutStorageConfigured() ? requestPatientPayout : undefined}
+      payoutRequestKey={randomUUID()} csrfToken={(await cookies()).get(csrfCookieName("PATIENT"))?.value}
+      payoutNote="pH7 reviews withdrawal requests manually before payment." />;
   }
   await requireDevelopmentPatientSession();
   const data = getSyntheticPatientPortalData();

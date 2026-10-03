@@ -15,7 +15,7 @@ export async function getPostgresPatientPortalData(
   sql: SqlExecutor,
   referralUserId: string,
 ): Promise<PatientPortalData | null> {
-  const [code, programme, referrals, ledger, payouts] = await Promise.all([
+  const [code, programme, referrals, ledger, payouts, account] = await Promise.all([
     sql.query<{ code: string }>(
       "SELECT code FROM referral_codes WHERE referral_user_id=$1 AND is_active=true LIMIT 1",
       [referralUserId],
@@ -27,10 +27,11 @@ export async function getPostgresPatientPortalData(
       minimum_withdrawal_minor: string | number;
     }>(
       `SELECT c.friend_incentive_minor, c.referrer_reward_minor, c.holding_period_days,
-        COALESCE((SELECT minimum_withdrawal_minor FROM programme_settings WHERE programme_enabled ORDER BY version DESC LIMIT 1),0) AS minimum_withdrawal_minor
+        (SELECT CASE WHEN programme_enabled THEN minimum_withdrawal_minor ELSE 0 END FROM programme_settings ORDER BY version DESC LIMIT 1) AS minimum_withdrawal_minor
        FROM campaigns c
-       WHERE c.is_active=true
-       LIMIT 1`,
+       WHERE c.is_active=true AND (SELECT programme_enabled FROM programme_settings ORDER BY version DESC LIMIT 1)=true
+       AND (c.starts_at IS NULL OR c.starts_at<=now()) AND (c.ends_at IS NULL OR c.ends_at>now())
+       ORDER BY c.version DESC LIMIT 1`,
     ),
     sql.query<{
       id: string;
@@ -77,11 +78,12 @@ export async function getPostgresPatientPortalData(
     }>(
       `SELECT p.id, p.amount_minor, p.status, p.requested_at, p.paid_at, a.iban_last4
        FROM payout_requests p
-       JOIN payout_accounts a ON a.id=p.payout_account_id
+       JOIN payout_accounts a ON a.id=p.payout_account_id AND a.referral_user_id=p.referral_user_id
        WHERE p.referral_user_id=$1
        ORDER BY p.created_at DESC`,
       [referralUserId],
     ),
+    sql.query<{ id: string; iban_last4: string }>("SELECT id,iban_last4 FROM payout_accounts WHERE referral_user_id=$1 ORDER BY created_at DESC LIMIT 1", [referralUserId]),
   ]);
 
   const referralCode = code.rows[0]?.code;
@@ -121,6 +123,9 @@ export async function getPostgresPatientPortalData(
   const totals = buildPatientPortalData(referralModels, ledgerRows);
   return {
     ...totals,
+    withdrawableBalanceMinor: Math.max(0, totals.availableBalanceMinor - payouts.rows.filter(row => row.status === "REQUESTED").reduce((sum,row) => sum + toMinorUnits(row.amount_minor,"requested withdrawal"),0)),
+    withdrawalUnderReview: referralModels.some(row=>row.status==="FRAUD_REVIEW"),
+    payoutAccount: account.rows[0] ? { id: account.rows[0].id, accountMask: `•••• ${account.rows[0].iban_last4}` } : undefined,
     syntheticPatientName: "pH7 patient",
     displayName: "there",
     referralCode,
@@ -128,7 +133,7 @@ export async function getPostgresPatientPortalData(
     friendIncentiveMinor: toMinorUnits(campaign.friend_incentive_minor, "friend incentive"),
     currentRewardMinor: toMinorUnits(campaign.referrer_reward_minor, "current reward"),
     holdingPeriodDays: campaign.holding_period_days,
-    minimumWithdrawalMinor: toMinorUnits(campaign.minimum_withdrawal_minor, "minimum withdrawal"),
+    minimumWithdrawalMinor: toMinorUnits(campaign.minimum_withdrawal_minor ?? 0, "minimum withdrawal"),
     payouts: payouts.rows.map((row) => ({
       id: row.id,
       amountMinor: toMinorUnits(row.amount_minor, "payout amount"),

@@ -11,18 +11,114 @@ export type FraudType = "SELF_REFERRAL" | "DUPLICATE_REFERRED_USER" | "SAME_DEVI
 export type FraudDecision = "APPROVED" | "REJECTED" | "INVESTIGATING";
 export interface RuntimeCampaign { id: string; version: number; active: boolean; friendIncentiveMinor: number; referrerRewardMinor: number; holdingPeriodDays: number; }
 export interface OperationalAuditActor { readonly adminUserId: string; readonly requestId?: string; }
+export interface PayoutRequestCommand {
+  referralUserId: string; amountMinor: number; idempotencyKey: string;
+  payoutAccountId?: string;
+  bankDetails?: { accountHolderName: string; ibanEncrypted: Buffer; ibanLast4: string };
+  enforceProgrammeRules?: boolean;
+}
 
 export class PostgresOperationalRepository {
   constructor(private readonly sql: SqlExecutor) {}
   async activeCampaign(): Promise<RuntimeCampaign | null> { const r = await this.sql.query<{ id: string; version: number; is_active: boolean; friend_incentive_minor: number; referrer_reward_minor: number; holding_period_days: number }>("SELECT id, version, is_active, friend_incentive_minor, referrer_reward_minor, holding_period_days FROM campaigns WHERE is_active LIMIT 1"); const row = r.rows[0]; return row ? { id: row.id, version: row.version, active: row.is_active, friendIncentiveMinor: row.friend_incentive_minor, referrerRewardMinor: row.referrer_reward_minor, holdingPeriodDays: row.holding_period_days } : null; }
   async setCampaign(input: { friendIncentiveMinor: number; referrerRewardMinor: number; active: boolean; holdingPeriodDays?: number }, actor?: OperationalAuditActor): Promise<RuntimeCampaign> {
     if (!Number.isSafeInteger(input.friendIncentiveMinor) || !Number.isSafeInteger(input.referrerRewardMinor) || input.friendIncentiveMinor < 0 || input.referrerRewardMinor < 0) throw new Error("Invalid campaign economics.");
-    return this.sql.transaction(async (tx) => { await tx.query("LOCK TABLE campaigns IN SHARE ROW EXCLUSIVE MODE"); const old = await tx.query<{ version: number; holding_period_days: number }>("SELECT version, holding_period_days FROM campaigns WHERE is_active FOR UPDATE"); const version = (old.rows[0]?.version ?? 0) + 1; const holding = input.holdingPeriodDays ?? old.rows[0]?.holding_period_days ?? 0; await tx.query("UPDATE campaigns SET is_active = false WHERE is_active"); const created = await tx.query<{ id: string }>("INSERT INTO campaigns (version, name, is_active, friend_incentive_minor, referrer_reward_minor, holding_period_days) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id", [version, `Referral programme v${version}`, input.active, input.friendIncentiveMinor, input.referrerRewardMinor, holding]); await tx.query("INSERT INTO programme_settings (version, programme_enabled) VALUES ((SELECT COALESCE(MAX(version),0)+1 FROM programme_settings), $1)", [input.active]); await this.audit(tx, "PROGRAMME_UPDATED", "campaign", created.rows[0].id, actor); return { id: created.rows[0].id, version, active: input.active, friendIncentiveMinor: input.friendIncentiveMinor, referrerRewardMinor: input.referrerRewardMinor, holdingPeriodDays: holding }; });
+    return this.sql.transaction(async (tx) => {
+      await tx.query("LOCK TABLE campaigns IN SHARE ROW EXCLUSIVE MODE");
+      const old = await tx.query<{ version: number; holding_period_days: number }>("SELECT version,holding_period_days FROM campaigns ORDER BY version DESC LIMIT 1 FOR UPDATE");
+      const version = (old.rows[0]?.version ?? 0) + 1;
+      const holding = input.holdingPeriodDays ?? old.rows[0]?.holding_period_days ?? 0;
+      await tx.query("UPDATE campaigns SET is_active=false WHERE is_active");
+      const created = await tx.query<{ id: string }>("INSERT INTO campaigns(version,name,is_active,friend_incentive_minor,referrer_reward_minor,holding_period_days) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id", [version,`Referral programme v${version}`,input.active,input.friendIncentiveMinor,input.referrerRewardMinor,holding]);
+      // A new offer must not silently reset the existing withdrawal policy.
+      await tx.query(`INSERT INTO programme_settings(version,programme_enabled,minimum_withdrawal_minor)
+        VALUES ((SELECT COALESCE(MAX(version),0)+1 FROM programme_settings),$1,
+        COALESCE((SELECT minimum_withdrawal_minor FROM programme_settings ORDER BY version DESC LIMIT 1),0))`, [input.active]);
+      await this.audit(tx,"PROGRAMME_UPDATED","campaign",created.rows[0].id,actor);
+      return {id:created.rows[0].id,version,active:input.active,friendIncentiveMinor:input.friendIncentiveMinor,referrerRewardMinor:input.referrerRewardMinor,holdingPeriodDays:holding};
+    });
   }
-  async requestPayout(input: { referralUserId: string; payoutAccountId: string; amountMinor: number; idempotencyKey: string }, actor?: OperationalAuditActor) { return this.sql.transaction(async (tx) => { await tx.query("SELECT pg_advisory_xact_lock(hashtext($1))", [input.referralUserId]); const existing = await tx.query<{ id: string; status: string }>("SELECT id, status FROM payout_requests WHERE idempotency_key = $1", [input.idempotencyKey]); if (existing.rows[0]) return existing.rows[0]; const account = await tx.query("SELECT id FROM payout_accounts WHERE id = $1 AND referral_user_id = $2", [input.payoutAccountId, input.referralUserId]); if (!account.rows[0]) throw new Error("Payout account is unavailable."); const balance = await tx.query<{ balance: string }>("SELECT COALESCE(SUM(amount_minor),0)::text AS balance FROM reward_ledger WHERE referral_user_id = $1 AND status = 'EFFECTIVE'", [input.referralUserId]); if (input.amountMinor <= 0 || input.amountMinor > Number(balance.rows[0].balance)) throw new Error("Payout amount is unavailable."); const payout = await tx.query<{ id: string; status: string }>("INSERT INTO payout_requests (referral_user_id, payout_account_id, amount_minor, idempotency_key) VALUES ($1,$2,$3,$4) RETURNING id,status", [input.referralUserId, input.payoutAccountId, input.amountMinor, input.idempotencyKey]); await this.audit(tx, "PAYOUT_REQUESTED", "payout_request", payout.rows[0].id, actor); return payout.rows[0]; }); }
-  async markPayoutPaid(payoutId: string, idempotencyKey: string, actor?: OperationalAuditActor) { return this.sql.transaction(async (tx) => { const payout = await tx.query<{ referral_user_id: string; amount_minor: number; status: string }>("SELECT referral_user_id, amount_minor, status FROM payout_requests WHERE id = $1 FOR UPDATE", [payoutId]); const row = payout.rows[0]; if (!row) throw new Error("Payout does not exist."); if (row.status === "PAID") return { id: payoutId, status: row.status }; await tx.query("SELECT pg_advisory_xact_lock(hashtext($1))", [row.referral_user_id]); const balance = await tx.query<{ balance: string }>("SELECT COALESCE(SUM(amount_minor),0)::text AS balance FROM reward_ledger WHERE referral_user_id = $1 AND status = 'EFFECTIVE'", [row.referral_user_id]); if (row.amount_minor > Number(balance.rows[0].balance)) throw new Error("Payout balance is unavailable."); await tx.query("UPDATE payout_requests SET status = 'PAID', paid_at = now() WHERE id = $1", [payoutId]); await tx.query("INSERT INTO reward_ledger (referral_user_id, payout_request_id, type, amount_minor, idempotency_key) VALUES ($1,$2,'PAYOUT',$3,$4) ON CONFLICT DO NOTHING", [row.referral_user_id, payoutId, -row.amount_minor, idempotencyKey]); await this.audit(tx, "PAYOUT_PAID", "payout_request", payoutId, actor); return { id: payoutId, status: "PAID" }; }); }
+  async requestPayout(input: PayoutRequestCommand, actor?: OperationalAuditActor) {
+    if (!Number.isSafeInteger(input.amountMinor) || input.amountMinor <= 0 || !input.idempotencyKey) throw new Error("Payout amount is unavailable.");
+    for (let attempt = 0; ; attempt++) {
+      try { return await this.sql.transaction(async tx => {
+        await tx.query("SELECT pg_advisory_xact_lock(hashtext($1))", [input.referralUserId]);
+        const existing = await tx.query<{ id: string; status: string; referral_user_id: string; amount_minor: string; payout_account_id: string }>("SELECT id,status,referral_user_id,amount_minor,payout_account_id FROM payout_requests WHERE idempotency_key=$1", [input.idempotencyKey]);
+        if (existing.rows[0]) {
+          if (existing.rows[0].referral_user_id !== input.referralUserId || Number(existing.rows[0].amount_minor) !== input.amountMinor) throw new Error("Payout request does not match.");
+          const account=(await tx.query<{iban_last4:string}>("SELECT iban_last4 FROM payout_accounts WHERE id=$1 AND referral_user_id=$2",[existing.rows[0].payout_account_id,input.referralUserId])).rows[0];
+          if (!account) throw new Error("Payout account is unavailable.");
+          return { id: existing.rows[0].id, status: existing.rows[0].status, accountMask:`•••• ${account.iban_last4}` };
+        }
+        if (input.enforceProgrammeRules) {
+          const settings = (await tx.query<{ programme_enabled: boolean; minimum_withdrawal_minor: string }>("SELECT programme_enabled,minimum_withdrawal_minor FROM programme_settings ORDER BY version DESC LIMIT 1")).rows[0];
+          if (!settings?.programme_enabled || Number(settings.minimum_withdrawal_minor) <= 0 || input.amountMinor < Number(settings.minimum_withdrawal_minor)) throw new Error("Withdrawals are unavailable or below the minimum.");
+          const review = await tx.query("SELECT id FROM referrals WHERE referrer_user_id=$1 AND status='FRAUD_REVIEW' LIMIT 1", [input.referralUserId]);
+          if (review.rows[0]) throw new Error("Withdrawal requires review.");
+        }
+        const balance = await tx.query<{ balance: string }>(`SELECT
+          COALESCE((SELECT SUM(amount_minor) FROM reward_ledger WHERE referral_user_id=$1 AND status='EFFECTIVE'),0)
+          - COALESCE((SELECT SUM(amount_minor) FROM payout_requests WHERE referral_user_id=$1 AND status='REQUESTED'),0) AS balance`, [input.referralUserId]);
+        if (input.amountMinor > Number(balance.rows[0].balance)) throw new Error("Payout amount is unavailable.");
+        let accountId = input.payoutAccountId;
+        let accountMask: string;
+        if (input.bankDetails) {
+          const bank = input.bankDetails;
+          accountId = (await tx.query<{ id: string }>("INSERT INTO payout_accounts(referral_user_id,account_holder_name,iban_encrypted,iban_last4) VALUES ($1,$2,$3,$4) RETURNING id", [input.referralUserId, bank.accountHolderName, bank.ibanEncrypted, bank.ibanLast4])).rows[0].id;
+          accountMask=`•••• ${bank.ibanLast4}`;
+          await this.audit(tx, "PAYOUT_DETAILS_SAVED", "payout_account", accountId, actor);
+        } else {
+          const account = await tx.query<{iban_last4:string}>("SELECT id,iban_last4 FROM payout_accounts WHERE id=$1 AND referral_user_id=$2", [accountId, input.referralUserId]);
+          if (!account.rows[0]) throw new Error("Payout account is unavailable.");
+          accountMask=`•••• ${account.rows[0].iban_last4}`;
+        }
+        const payout = (await tx.query<{ id: string; status: string }>("INSERT INTO payout_requests(referral_user_id,payout_account_id,amount_minor,idempotency_key) VALUES ($1,$2,$3,$4) RETURNING id,status", [input.referralUserId, accountId, input.amountMinor, input.idempotencyKey])).rows[0];
+        await this.audit(tx, "PAYOUT_REQUESTED", "payout_request", payout.id, actor);
+        return {...payout,accountMask};
+      }); } catch (error) {
+        if (attempt >= 3 || !["40001", "40P01"].includes((error as { code?: string }).code ?? "")) throw error;
+      }
+    }
+  }
+  async markPayoutPaid(payoutId: string, idempotencyKey: string, actor?: OperationalAuditActor) {
+    for (let attempt=0; ; attempt++) {
+      try { return await this.sql.transaction(async tx => {
+        const row = (await tx.query<{referral_user_id:string;amount_minor:string;status:string}>("SELECT referral_user_id,amount_minor,status FROM payout_requests WHERE id=$1 FOR UPDATE",[payoutId])).rows[0];
+        if (!row) throw new Error("Payout does not exist.");
+        if (row.status === "PAID") return {id:payoutId,status:row.status};
+        if (row.status !== "REQUESTED") throw new Error("Payout cannot be marked paid.");
+        await tx.query("SELECT pg_advisory_xact_lock(hashtext($1))",[row.referral_user_id]);
+        if ((await tx.query("SELECT id FROM referrals WHERE referrer_user_id=$1 AND status='FRAUD_REVIEW' LIMIT 1",[row.referral_user_id])).rows[0]) throw new Error("Payout requires fraud review.");
+        const balance = (await tx.query<{balance:string}>("SELECT COALESCE(SUM(amount_minor),0)::text AS balance FROM reward_ledger WHERE referral_user_id=$1 AND status='EFFECTIVE'",[row.referral_user_id])).rows[0];
+        if (Number(row.amount_minor) > Number(balance.balance)) throw new Error("Payout balance is unavailable.");
+        const debit = await tx.query<{id:string}>("INSERT INTO reward_ledger(referral_user_id,payout_request_id,type,amount_minor,idempotency_key) VALUES ($1,$2,'PAYOUT',$3,$4) ON CONFLICT DO NOTHING RETURNING id",[row.referral_user_id,payoutId,-Number(row.amount_minor),idempotencyKey]);
+        if (!debit.rows[0]) throw new Error("Payout debit could not be recorded.");
+        await tx.query("UPDATE payout_requests SET status='PAID',paid_at=now() WHERE id=$1",[payoutId]);
+        await this.audit(tx,"PAYOUT_PAID","payout_request",payoutId,actor);
+        return {id:payoutId,status:"PAID"};
+      }); } catch(error) {
+        if (attempt>=3 || !["40001","40P01"].includes((error as {code?:string}).code ?? "")) throw error;
+      }
+    }
+  }
   async flagFraud(referralId: string, type: FraudType, actor?: OperationalAuditActor) { return this.sql.transaction(async (tx) => { const referral = new PostgresDomainRepository(tx); const current = await referral.findReferral(referralId); if (!current) throw new Error("Referral does not exist."); const existing = await tx.query<{ id: string; status: string }>("SELECT id,status FROM fraud_flags WHERE referral_id = $1 AND type = $2 AND status <> 'REJECTED' FOR UPDATE", [referralId, type]); if (existing.rows[0]) return existing.rows[0]; const lifecycle = new ReferralLifecycleService({ transaction: async (work) => work(referral) }); await lifecycle.transitionInTransaction(referral, { referralId, toStatus: "FRAUD_REVIEW", source: "SYSTEM", idempotencyKey: `fraud:${referralId}:${type}` }); const flag = await tx.query<{ id: string; status: string }>("INSERT INTO fraud_flags (referral_id,type) VALUES ($1,$2) RETURNING id,status", [referralId, type]); await this.audit(tx, "FRAUD_FLAGGED", "fraud_flag", flag.rows[0].id, actor); return flag.rows[0]; }); }
-  async resolveFraud(flagId: string, decision: FraudDecision, actor?: OperationalAuditActor) { return this.sql.transaction(async (tx) => { const flag = await tx.query<{ referral_id: string }>("SELECT referral_id FROM fraud_flags WHERE id = $1 FOR UPDATE", [flagId]); if (!flag.rows[0]) throw new Error("Fraud flag does not exist."); const repo = new PostgresDomainRepository(tx); const value = await repo.findReferral(flag.rows[0].referral_id); if (!value) throw new Error("Referral does not exist."); const target: ReferralStatus | null = decision === "APPROVED" ? value.statusBeforeFraudReview : decision === "REJECTED" ? "REJECTED" : null; if (target && value.status === "FRAUD_REVIEW") { const lifecycle = new ReferralLifecycleService({ transaction: async (work) => work(repo) }); await lifecycle.transitionInTransaction(repo, { referralId: value.id, toStatus: target, source: "MANUAL", idempotencyKey: `fraud-resolution:${flagId}:${decision}` }); } await tx.query("UPDATE fraud_flags SET status = $2, resolved_at = CASE WHEN $2 IN ('APPROVED','REJECTED') THEN now() ELSE NULL END WHERE id = $1", [flagId, decision]); await this.audit(tx, `FRAUD_${decision}`, "fraud_flag", flagId, actor); return { id: flagId, status: decision }; }); }
+  async resolveFraud(flagId: string, decision: FraudDecision, actor?: OperationalAuditActor) {
+    return this.sql.transaction(async tx => {
+      const flag=(await tx.query<{referral_id:string}>("SELECT referral_id FROM fraud_flags WHERE id=$1 FOR UPDATE",[flagId])).rows[0];
+      if (!flag) throw new Error("Fraud flag does not exist.");
+      const repo=new PostgresDomainRepository(tx);
+      const value=await repo.findReferral(flag.referral_id);
+      if (!value) throw new Error("Referral does not exist.");
+      const target:ReferralStatus|null=decision==="APPROVED"?value.statusBeforeFraudReview:decision==="REJECTED"?"REJECTED":null;
+      if(target && value.status==="FRAUD_REVIEW") {
+        const lifecycle=new ReferralLifecycleService({transaction:async work=>work(repo)});
+        await lifecycle.transitionInTransaction(repo,{referralId:value.id,toStatus:target,source:"MANUAL",idempotencyKey:`fraud-resolution:${flagId}:${decision}`});
+      }
+      await tx.query("UPDATE fraud_flags SET status=$2::fraud_flag_status,resolved_at=CASE WHEN $2::fraud_flag_status IN ('APPROVED','REJECTED') THEN now() ELSE NULL END WHERE id=$1",[flagId,decision]);
+      await this.audit(tx,`FRAUD_${decision}`,"fraud_flag",flagId,actor);
+      return {id:flagId,status:decision};
+    });
+  }
   async processWebhook(input: { eventId: string; eventType: "consultation.paid" | "consultation.refunded"; attributionPublicId: string; payloadHash?: string }) {
     return this.sql.transaction(async (tx) => {
       const claimed = await tx.query<{ event_id: string }>(

@@ -8,6 +8,9 @@ import { formatEuro } from "@/lib/portal/format";
 import Link from "next/link";
 import { withdrawalPresentation } from "@/lib/portal/withdrawal";
 import { Disclosure } from "@/components/portal/disclosure";
+import { SectionLink } from "@/components/portal/section-link";
+
+const payoutLabels = { REQUESTED: "Withdrawal requested", PAID: "Paid", REJECTED: "Not approved", CANCELLED: "Cancelled" };
 
 function shareCopy(data: PatientPortalData): string {
   return `I've been using pH7 and thought you might find it useful. Use my invitation and you'll get ${formatEuro(data.friendIncentiveMinor)} off your first qualifying consultation.`;
@@ -18,27 +21,32 @@ export function PortalDashboard({
   qrSvg,
   payoutAction,
   payoutNote,
+  payoutRequestKey,
+  csrfToken,
 }: {
   data: PatientPortalData;
   qrSvg: string;
   payoutAction?: (previousState: PayoutActionState, formData: FormData) => Promise<PayoutActionState>;
   payoutNote?: string;
+  payoutRequestKey?: string;
+  csrfToken?: string;
 }) {
-  const withdrawal = withdrawalPresentation(data.availableBalanceMinor, data.minimumWithdrawalMinor, Boolean(payoutAction));
+  const availableCash = data.withdrawableBalanceMinor ?? data.availableBalanceMinor;
+  const withdrawal = withdrawalPresentation(availableCash, data.minimumWithdrawalMinor, Boolean(payoutAction), data.withdrawalUnderReview);
   return (
     <main className="portal-shell">
       <a className="portal-skip-link" href="#invite">Skip to your invitation</a>
       <header className="portal-header">
         <Link className="brand" href="/portal" aria-label="pH7 Referral Portal"><Logo /></Link>
-        <nav className="portal-nav" aria-label="Your referral space"><a href="#rewards">Rewards</a><a href="#activity">Activity</a></nav>
+        <nav className="portal-nav" aria-label="Your referral space"><SectionLink target="rewards">Rewards</SectionLink><SectionLink target="activity">Activity</SectionLink></nav>
       </header>
 
       <div className="portal-intro">
       <section className="portal-hero" aria-labelledby="welcome-title">
         <p className="eyebrow">pH7 Refer</p>
-        <h1 id="welcome-title"><span>Give {formatEuro(data.friendIncentiveMinor)}.</span> <span>Get {formatEuro(data.currentRewardMinor)}.</span></h1>
-        <p>Give a friend {formatEuro(data.friendIncentiveMinor)} off their first qualifying consultation. You’ll earn {formatEuro(data.currentRewardMinor)} after they complete and pay for it.</p>
-        <a className="portal-text-link" href="#how-title">How your reward works <span aria-hidden="true">↗</span></a>
+        <h1 id="welcome-title"><span>Give {formatEuro(data.friendIncentiveMinor)}.</span> <span>Get {formatEuro(data.currentRewardMinor)} cash.</span></h1>
+        <p>Give a friend {formatEuro(data.friendIncentiveMinor)} off their first qualifying consultation. You’ll earn {formatEuro(data.currentRewardMinor)} in cash after they complete and pay for it.</p>
+        <SectionLink className="portal-text-link" target="how-title">How your reward works <span aria-hidden="true">↗</span></SectionLink>
       </section>
 
       <section id="invite" tabIndex={-1} className="share-card share-card-primary" aria-labelledby="share-title">
@@ -58,13 +66,14 @@ export function PortalDashboard({
       </div>
 
       <section id="rewards" tabIndex={-1} className="portal-rewards" aria-labelledby="balance-title">
-        <div className="section-heading"><h2 id="balance-title">Your rewards</h2></div>
+        <div className="section-heading"><h2 id="balance-title">Your cash rewards</h2></div>
+        <p className="cash-explainer">Referral rewards are paid to you in cash, not pH7 credit.</p>
         <div className="balance-grid">
-          <article className="balance-card balance-available"><span>Available</span><strong>{formatEuro(data.availableBalanceMinor)}</strong>
+          <article className="balance-card balance-available"><span>Available cash</span><strong>{formatEuro(availableCash)}</strong>
             <p>{withdrawal.reason}</p>
-            <a className={withdrawal.canRequest ? "button button-dark withdrawal-cta" : "portal-text-link"} href="#withdrawal">{withdrawal.canRequest ? `Withdraw ${formatEuro(data.availableBalanceMinor)}` : "Withdrawal information"}</a>
+            <SectionLink className={withdrawal.canRequest ? "button button-dark withdrawal-cta" : "portal-text-link"} target="withdrawal">{withdrawal.canRequest ? "Withdraw cash" : "Withdrawal information"}</SectionLink>
           </article>
-          <article className="balance-card"><span>Pending</span><strong>{formatEuro(data.pendingBalanceMinor)}</strong><p>Awaiting release</p></article>
+          <article className="balance-card"><span>Pending cash</span><strong>{formatEuro(data.pendingBalanceMinor)}</strong><p>Awaiting release</p></article>
           <article className="balance-card"><span>Lifetime earned</span><strong>{formatEuro(data.totalEarnedMinor)}</strong><p>Includes pending rewards</p></article>
         </div>
       </section>
@@ -85,11 +94,11 @@ export function PortalDashboard({
       </section>
 
       <div className="portal-payment-grid">
-      <section id="withdrawal" tabIndex={-1} className="payout-section" aria-label="Withdraw rewards"><PayoutForm availableBalanceMinor={data.availableBalanceMinor} minimumWithdrawalMinor={data.minimumWithdrawalMinor} action={payoutAction} note={payoutNote} /></section>
+      <section id="withdrawal" tabIndex={-1} className="payout-section" aria-label="Withdraw cash"><PayoutForm availableBalanceMinor={availableCash} minimumWithdrawalMinor={data.minimumWithdrawalMinor} action={payoutAction} note={payoutNote} savedAccount={data.payoutAccount} requestKey={payoutRequestKey} csrfToken={csrfToken} underReview={data.withdrawalUnderReview} /></section>
 
       <section className="history-section payout-history" aria-labelledby="payout-title">
         <div className="section-heading"><h2 id="payout-title">Payout history</h2></div>
-        {data.payouts.length ? <ul className="referral-list">{data.payouts.map((payout) => <li className="referral-row" key={payout.id}><div><p className="referral-name">{payout.status === "PAID" ? "Paid" : "Requested"} {payout.paidAt?.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) ?? payout.requestedAt.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</p><p className="referral-detail">Account ending {payout.accountMask}</p></div><div className="referral-reward"><span className={`status-pill status-${payout.status === "PAID" ? "positive" : payout.status === "REQUESTED" ? "pending" : "muted"}`}>{payout.status.toLowerCase()}</span><strong>{formatEuro(payout.amountMinor)}</strong></div></li>)}</ul> : <p className="empty-state">Your payout requests will appear here.</p>}
+        {data.payouts.length ? <ul className="referral-list">{data.payouts.map((payout) => <li className="referral-row" key={payout.id}><div><p className="referral-name">{payout.paidAt?.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) ?? payout.requestedAt.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</p><p className="referral-detail">Bank account {payout.accountMask}</p></div><div className="referral-reward"><span className={`status-pill status-${payout.status === "PAID" ? "positive" : payout.status === "REQUESTED" ? "pending" : "muted"}`}>{payoutLabels[payout.status]}</span><strong>{formatEuro(payout.amountMinor)}</strong></div></li>)}</ul> : <p className="empty-state">Your payout requests will appear here.</p>}
       </section>
       </div>
 
@@ -98,7 +107,7 @@ export function PortalDashboard({
         <ol>
           <li><span aria-hidden="true">1</span><div><strong>Share your invitation</strong><small>Send your personal link to a friend who is new to pH7.</small></div></li>
           <li><span aria-hidden="true">2</span><div><strong>They complete a consultation</strong><small>Your friend receives their benefit when eligible.</small></div></li>
-          <li><span aria-hidden="true">3</span><div><strong>You earn {formatEuro(data.currentRewardMinor)}</strong><small>After the qualifying paid consultation, your reward has a {data.holdingPeriodDays}-day holding period before release.</small></div></li>
+          <li><span aria-hidden="true">3</span><div><strong>You earn {formatEuro(data.currentRewardMinor)} in cash</strong><small>After the qualifying paid consultation, your reward has a {data.holdingPeriodDays}-day holding period before release.</small></div></li>
         </ol>
       </section>
 

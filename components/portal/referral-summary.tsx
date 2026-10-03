@@ -10,8 +10,8 @@ export function ReferralSummary({ referral, patientLabel }: { referral: PatientP
     : referral.status === "PAID_OUT" ? `${amount} paid`
     : referral.status === "FRAUD_REVIEW" ? `${amount} under review`
     : ["CANCELLED", "REFUNDED", "REJECTED", "EXPIRED"].includes(referral.status) || credit?.status === "VOID" ? "No reward payable"
-    : referral.status === "PAYABLE" && credit?.status === "EFFECTIVE" ? `${amount} available`
-    : credit?.status === "PENDING" ? `${amount} pending`
+    : referral.status === "PAYABLE" && credit?.status === "EFFECTIVE" ? `${amount} cash available`
+    : credit?.status === "PENDING" ? `${amount} cash pending`
     : credit?.status === "EFFECTIVE" ? `${amount} awaiting release`
     : `${amount} potential reward`;
   return (
