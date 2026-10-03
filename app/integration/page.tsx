@@ -1,3 +1,4 @@
+import { Logo } from "@/components/logo";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { referralDemoModeEnabled } from "@/lib/demo/config";
@@ -19,7 +20,7 @@ export default function IntegrationPage() {
   return (
     <main className="review-shell">
       <section className="review-hero">
-        <Link className="brand" href="/" aria-label="pH7 Referral Growth Engine">pH<span>7</span></Link>
+        <Link className="brand" href="/" aria-label="pH7 Referral Growth Engine"><Logo /></Link>
         <span className="test-badge">Staging environment — synthetic data</span>
         <p className="eyebrow">Integration status</p>
         <h1>What is ready, and what pH7 still needs to connect.</h1>

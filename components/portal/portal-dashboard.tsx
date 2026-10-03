@@ -1,3 +1,4 @@
+import { Logo } from "@/components/logo";
 import { PayoutForm } from "@/components/portal/payout-form";
 import type { PayoutActionState } from "@/lib/portal/actions";
 import { ReferralSummary } from "@/components/portal/referral-summary";
@@ -28,7 +29,7 @@ export function PortalDashboard({
     <main className="portal-shell">
       <a className="portal-skip-link" href="#invite">Skip to your invitation</a>
       <header className="portal-header">
-        <Link className="brand" href="/portal" aria-label="pH7 Referral Portal">pH<span>7</span></Link>
+        <Link className="brand" href="/portal" aria-label="pH7 Referral Portal"><Logo /></Link>
         <nav className="portal-nav" aria-label="Your referral space"><a href="#rewards">Rewards</a><a href="#activity">Activity</a></nav>
       </header>
 

@@ -1,10 +1,11 @@
+import { Logo } from "@/components/logo";
 import type { FriendOffer, FunnelUnavailableReason } from "@/lib/funnel/attribution";
 import { unavailableOfferCopy } from "@/lib/funnel/copy";
 import { formatEuro } from "@/lib/portal/format";
 import Link from "next/link";
 
 function FunnelFrame({ children }: { children: React.ReactNode }) {
-  return <main className="funnel-shell"><header className="funnel-header"><Link className="brand" href="/" aria-label="pH7">pH<span>7</span></Link><span>Friend invitation</span></header>{children}</main>;
+  return <main className="funnel-shell"><header className="funnel-header"><Link className="brand" href="/" aria-label="pH7"><Logo /></Link><span>Friend invitation</span></header>{children}</main>;
 }
 
 export function FriendFunnel({ offer }: { offer: FriendOffer }) {

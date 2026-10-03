@@ -1,4 +1,5 @@
 import { renderToStaticMarkup } from "react-dom/server";
+import { PH7_LOGO_URL } from "@/components/logo";
 import { describe, expect, it } from "vitest";
 import { FriendFunnel } from "@/components/funnel/friend-funnel";
 import { LocalContinuation } from "@/components/funnel/local-continuation";
@@ -68,8 +69,12 @@ describe("friend-funnel presentation", () => {
     expect(markup).toContain("awaiting the approved pH7 checkout integration");
     expect(markup).toContain("Continue to pH7");
     expect(markup).not.toContain("synthetic-ava");
-    expect(markup).not.toContain("ph7.health");
-    expect(markup).not.toMatch(/https?:\/\//);
+    // Only the approved public brand artwork may be external. Navigation and
+    // attribution must still remain local; this is not a pH7 handoff connection.
+    expect(markup).toContain(`src="${PH7_LOGO_URL}"`);
+    expect(markup).not.toMatch(/<(?:a|form)\b[^>]*(?:href|action)="https?:\/\//);
+    expect(markup.replaceAll(PH7_LOGO_URL, "")).not.toContain("ph7.health");
+    expect(markup.replaceAll(PH7_LOGO_URL, "")).not.toMatch(/https?:\/\//);
   });
 
   it("builds only the configured pH7 patient destination with an opaque attribution id", async () => {
@@ -86,6 +91,8 @@ describe("friend-funnel presentation", () => {
     expect(markup).toContain(attribution.attributionId);
     expect(markup).toContain("Opaque attribution reference");
     expect(markup).not.toContain("synthetic-ava");
-    expect(markup).not.toContain("ph7.health");
+    expect(markup).toContain(`src="${PH7_LOGO_URL}"`);
+    expect(markup).not.toMatch(/<(?:a|form)\b[^>]*(?:href|action)="https?:\/\//);
+    expect(markup.replaceAll(PH7_LOGO_URL, "")).not.toContain("ph7.health");
   });
 });

@@ -1,3 +1,4 @@
+import { Logo } from "@/components/logo";
 import { isDevelopmentPatientAccessEnabled } from "@/lib/portal/dev-access";
 import { beginDevelopmentPatientSession } from "@/lib/portal/dev-actions";
 import { openDemoAdmin, openDemoPortal } from "@/lib/demo/actions";
@@ -12,7 +13,7 @@ export default function HomePage() {
     return (
       <main className="review-shell">
         <section className="review-hero">
-          <Link className="brand" href="/" aria-label="pH7 Referral Growth Engine">pH<span>7</span></Link>
+          <Link className="brand" href="/" aria-label="pH7 Referral Growth Engine"><Logo /></Link>
           <span className="test-badge">Staging environment — synthetic data</span>
           <p className="eyebrow">Referral Growth Engine</p>
           <h1>A complete review environment for the pH7 referral programme.</h1>
@@ -50,7 +51,7 @@ export default function HomePage() {
   return (
     <main className="entry-shell">
       <section className="entry-card">
-        <Link className="brand" href="/" aria-label="pH7 Referral Portal">pH<span>7</span></Link>
+        <Link className="brand" href="/" aria-label="pH7 Referral Portal"><Logo /></Link>
         <p className="eyebrow">Referral portal</p>
         <h1>Good care is worth sharing.</h1>
         <p className="entry-copy">Your referral space is opened securely from pH7. Here you can share your invitation, follow its progress, and manage rewards.</p>

@@ -1,3 +1,4 @@
+import { Logo } from "@/components/logo";
 import type { OpaqueAttribution } from "@/lib/funnel/attribution";
 import { formatEuro } from "@/lib/portal/format";
 import Link from "next/link";
@@ -5,7 +6,7 @@ import Link from "next/link";
 export function LocalContinuation({ attribution }: { attribution: OpaqueAttribution }) {
   return (
     <main className="funnel-shell">
-      <header className="funnel-header"><Link className="brand" href="/" aria-label="pH7">pH<span>7</span></Link><span>Staging hand-off</span></header>
+      <header className="funnel-header"><Link className="brand" href="/" aria-label="pH7"><Logo /></Link><span>Staging hand-off</span></header>
       <section className="continuation-card">
         <div className="success-mark" aria-hidden="true">✓</div>
         <p className="eyebrow">Invitation saved</p>

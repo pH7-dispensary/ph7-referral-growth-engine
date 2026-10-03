@@ -1,3 +1,4 @@
+import { Logo } from "@/components/logo";
 import Link from "next/link";
 import { formatEuro } from "@/lib/portal/format";
 import type { DemoAdminData } from "@/lib/demo/data";
@@ -15,7 +16,7 @@ export function DemoAdminConsole({ data, tab }: { data: DemoAdminData; tab: Admi
   return (
     <main className="admin-shell">
       <header className="admin-header">
-        <Link className="brand" href="/" aria-label="pH7 Referral Growth Engine">pH<span>7</span></Link>
+        <Link className="brand" href="/" aria-label="pH7 Referral Growth Engine"><Logo /></Link>
         <span className="test-badge">Staging founder review</span>
       </header>
       <nav className="admin-nav" aria-label="Founder sections">
