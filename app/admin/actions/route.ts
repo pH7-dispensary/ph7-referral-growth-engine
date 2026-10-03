@@ -13,10 +13,14 @@ function integer(form:FormData,name:string,min:number,max:number){const value=Nu
 function uuid(value:FormDataEntryValue|null){const text=typeof value==="string"?value:"";if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(text))throw new Error("Invalid reference.");return text}
 
 export async function POST(request:Request){
+  let session:Awaited<ReturnType<typeof currentAdminSession>>;
+  let form:FormData;
   try{
     if(!adminLoginOriginAllowed(request)||Number(request.headers.get("content-length")??0)>8192)throw new Error("Rejected");
-    const session=await currentAdminSession(); if(!hasAdminAccess(session))throw new Error("Rejected");
-    const form=await request.formData(); const csrf=form.get("csrfToken"); assertSessionCsrf("ADMIN",session,typeof csrf==="string"?csrf:undefined);
+    session=await currentAdminSession(); if(!hasAdminAccess(session))throw new Error("Rejected");
+    form=await request.formData(); const csrf=form.get("csrfToken"); assertSessionCsrf("ADMIN",session,typeof csrf==="string"?csrf:undefined);
+  }catch{return new Response("Request rejected.",{status:403,headers:{"Cache-Control":"no-store"}})}
+  try{
     const actor={adminUserId:session.adminUserId,role:session.adminRole??null}; const action=String(form.get("action")??"");
     if(action==="campaign.save"){
       if(form.get("confirmation")!=="SAVE_CAMPAIGN")throw new Error("Confirmation required.");
