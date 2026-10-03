@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { notFound } from "next/navigation";
 import { referralDemoModeEnabled } from "@/lib/demo/config";
 import { referralDatabaseConfigured } from "@/lib/persistence/node-postgres";
 
@@ -9,6 +10,10 @@ function StatusRow({ label, status, tone = "ready" }: { label: string; status: s
 }
 
 export default function IntegrationPage() {
+  // Developer review is not a public production surface, even if preview
+  // flags were accidentally copied into the production Vercel environment.
+  if (process.env.APP_ENV === "production" || process.env.VERCEL_ENV === "production"
+    || (process.env.NODE_ENV !== "development" && !referralDemoModeEnabled())) notFound();
   const handoffConfigured = Boolean(process.env.PH7_HANDOFF_JWKS_URL && process.env.PH7_HANDOFF_ISSUER && process.env.PH7_HANDOFF_AUDIENCE && process.env.PH7_HANDOFF_ALLOWED_ALGORITHMS && process.env.PH7_HANDOFF_MAX_TTL_SECONDS);
   const webhookConfigured = Boolean(process.env.PH7_WEBHOOK_SECRET);
   return (

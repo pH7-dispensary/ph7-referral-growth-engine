@@ -3,6 +3,7 @@
 import { useActionState } from "react";
 import type { PayoutActionState } from "@/lib/portal/actions";
 import { formatEuro } from "@/lib/portal/format";
+import { withdrawalPresentation } from "@/lib/portal/withdrawal";
 
 const initialPayoutActionState: PayoutActionState = { status: "idle" };
 async function unavailablePayoutAction(): Promise<PayoutActionState> {
@@ -21,15 +22,19 @@ export function PayoutForm({
   note?: string;
 }) {
   const hasAction = Boolean(action);
-  const canWithdraw = hasAction && availableBalanceMinor >= minimumWithdrawalMinor && minimumWithdrawalMinor > 0;
+  const { canRequest: canWithdraw, reason: disabledReason } = withdrawalPresentation(availableBalanceMinor, minimumWithdrawalMinor, hasAction);
   const [state, formAction, isPending] = useActionState(action ?? unavailablePayoutAction, initialPayoutActionState);
-  const disabledReason = availableBalanceMinor <= 0
-    ? "You do not have available rewards to withdraw yet."
-    : availableBalanceMinor < minimumWithdrawalMinor
-      ? `Minimum withdrawal: ${formatEuro(minimumWithdrawalMinor)}.`
-      : "Secure in-portal withdrawal requests are not enabled yet; payout history is shown when manual payout requests exist.";
+  if (!hasAction) {
+    return <div className="payout-unavailable">
+      <p className="eyebrow">Withdrawals</p>
+      <h2>Your rewards are safely held.</h2>
+      <p><strong>{formatEuro(availableBalanceMinor)} available.</strong> Online withdrawals are not available yet.</p>
+      <p className="form-note">pH7 reviews payouts manually. Your balance remains recorded, and you can follow existing requests in payout history.</p>
+      {minimumWithdrawalMinor > 0 ? <p className="form-note">Minimum withdrawal: {formatEuro(minimumWithdrawalMinor)}.</p> : null}
+    </div>;
+  }
   return (
-    <form action={formAction} className="payout-form">
+    <form action={formAction} className="payout-form" aria-busy={isPending}>
       <div className="form-heading">
         <div>
           <p className="eyebrow">Withdrawal</p>
@@ -53,11 +58,13 @@ export function PayoutForm({
           <option value={String(minimumWithdrawalMinor)}>Minimum — {formatEuro(minimumWithdrawalMinor)}</option>
         </select>
       </label>
-      <p className="form-note">{canWithdraw ? `Minimum withdrawal: ${formatEuro(minimumWithdrawalMinor)}.` : disabledReason}</p>
-      {state.status !== "idle" ? <p aria-live="polite" className={`form-result form-result-${state.status}`}>{state.message}</p> : null}
-      <button className="button button-dark button-full" disabled={isPending || !canWithdraw} type="submit">
+      <p id="withdrawal-eligibility" className="form-note">{canWithdraw ? `Minimum withdrawal: ${formatEuro(minimumWithdrawalMinor)}.` : disabledReason}</p>
+      <button className="button button-dark button-full" disabled={isPending || !canWithdraw} type="submit" aria-describedby="withdrawal-eligibility">
         {isPending ? "Checking details…" : "Withdraw funds"}
       </button>
+      <div className="payout-feedback" role="status" aria-live="polite" aria-atomic="true">
+        {!isPending && state.status !== "idle" ? <p className={`form-result form-result-${state.status}`}>{state.message}</p> : null}
+      </div>
     </form>
   );
 }

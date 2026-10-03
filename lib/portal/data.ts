@@ -27,7 +27,7 @@ export interface PatientPortalData {
   pendingBalanceMinor: number;
   totalEarnedMinor: number;
   minimumWithdrawalMinor: number;
-  referrals: Array<Referral & { patientLabel: string }>;
+  referrals: Array<Referral & { patientLabel: string; ledgerCredit?: Pick<LedgerEntry, "status" | "amountMinor">; hasLedgerReversal?: boolean }>;
   payouts: PortalPayoutHistoryItem[];
 }
 
@@ -61,7 +61,14 @@ export function buildPatientPortalData(referrals: PatientPortalData["referrals"]
     availableBalanceMinor: effective,
     pendingBalanceMinor: pending,
     totalEarnedMinor: earned,
-    referrals,
+    referrals: referrals.map((referral) => {
+      const credit = ledger.find((entry) => entry.referralId === referral.id && entry.type === "CREDIT");
+      return {
+        ...referral,
+        ledgerCredit: credit ? { status: credit.status, amountMinor: toMinorUnits(credit.amountMinor, "referral ledger credit") } : undefined,
+        hasLedgerReversal: ledger.some((entry) => entry.referralId === referral.id && entry.type === "REVERSAL" && entry.status === "EFFECTIVE"),
+      };
+    }),
   };
 }
 

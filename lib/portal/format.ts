@@ -5,7 +5,7 @@ export function formatEuro(minor: number): string {
   return new Intl.NumberFormat("en-IE", {
     style: "currency",
     currency: "EUR",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
+    minimumFractionDigits: amount % 100 === 0 ? 0 : 2,
+    maximumFractionDigits: 2,
   }).format(amount / 100);
 }

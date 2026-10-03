@@ -25,9 +25,9 @@ export default async function PortalPage() {
     // The session-derived referral user ID is the only identifier used for this
     // query; no patient/reference identifier is accepted from the browser.
     const data = await getPostgresPatientPortalData(getPostgresExecutor(), session.referralUserId);
-    if (!data) return <main className="entry-shell"><section className="entry-card"><p className="eyebrow">pH7 Refer</p><h1>Your referral invite is being prepared.</h1><p className="entry-copy">Please try again shortly. If this continues, pH7 support can refresh your referral access without exposing any patient data.</p></section></main>;
+    if (!data) return <main className="entry-shell"><section className="entry-card"><p className="eyebrow">pH7 Refer</p><h1>Your referral invite is being prepared.</h1><p className="entry-copy">Please try again shortly. If this continues, contact pH7 support.</p></section></main>;
     const qrSvg = await createReferralQrSvg(data.referralUrl);
-    return <PortalDashboard data={data} qrSvg={qrSvg} payoutNote="Manual pH7 payout review remains in place. Secure in-portal withdrawal submission will be enabled once bank-detail encryption is configured." />;
+    return <PortalDashboard data={data} qrSvg={qrSvg} payoutNote="pH7 reviews payouts manually. You can follow existing requests in payout history." />;
   }
   await requireDevelopmentPatientSession();
   const data = getSyntheticPatientPortalData();
