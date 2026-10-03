@@ -1,5 +1,13 @@
 # Local Operations and Production Readiness
 
+## Founder password access — authorised 2026-10-03
+
+Use `https://refer.ph7.health/admin/login`. The form is publicly reachable but has no public registration and reveals no configured username/password; all admin content remains session/role protected. `ADMIN_LOGIN_CREDENTIAL` is sensitive and production-scoped, with JSON `{version:1,emailHash,salt,passwordHash}`; emailHash is normalized-email SHA-256, salt is 16 random bytes as hex, passwordHash is 64-byte scrypt as hex using N=131072/r=8/p=1. Provision only through an approved private procedure with CLI stdin or a secret manager. Never store a plaintext password, publish the verifier, expose a NEXT_PUBLIC variable or put credentials in documentation. Existing session secrets are unchanged. Password updates require deliberate configuration/redeployment and a separate session-revocation plan; changing the verifier alone does not revoke existing opaque sessions.
+
+POST login enforces the canonical production Origin, fixed redirects and 4096-byte form limits. A PostgreSQL-backed single-founder throttle allows at most 12 attempts per 15 minutes across all serverless instances; invalid attempts and successful attempts both consume a slot. It uses the existing append-only `admin_audit_log` with no submitted identity or password. During a lockout, wait for the window; do not delete immutable audit records or bypass authentication. Admin logout is POST-only and CSRF protected and does not end patient sessions. Unauthenticated `/admin` redirects to `/admin/login` only when valid founder configuration exists; otherwise it remains unavailable. Admin responses must be no-store and non-indexable. Credentials establish founder access only: production operational dashboard composition is still pending. No public signup, MFA or password-reset service is added by this change.
+
+To rerun restart/concurrency authentication tests, use `PH7_LOCAL_ADMIN_INTEGRATION=true npx vitest run tests/admin-login-postgres.test.ts` with only the disposable loopback PostgreSQL instance at port 55473/database `ph7_release_test`; the harness overrides its URL and uses synthetic credentials. It never loads production credentials or database configuration. Keep its immutable audit fixtures local and stop the test server after verification.
+
 ## Current staging mode
 
 The isolated Vercel project `ph7-referral-growth-engine` uses the dedicated Referral Growth Engine PostgreSQL/Supabase database. Preview review mode is explicit: `APP_ENV=preview` and `REFERRAL_DEMO_MODE=true` must both be configured. Demo mode seeds and reads synthetic records only, and it never creates a real pH7, GA4, banking, payment, DNS, or patient-data connection.

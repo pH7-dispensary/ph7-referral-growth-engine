@@ -54,6 +54,11 @@ h1 { font-size:clamp(36px,9vw,58px); letter-spacing:-.055em; line-height:1.02; m
 .portal-nav { display:flex; gap:8px; }
 .portal-nav a { display:inline-flex; align-items:center; min-height:44px; padding:0 12px; color:var(--portal-muted); font-size:14px; font-weight:700; text-decoration:none; border-radius:999px; }
 .portal-nav a:hover { background:var(--portal-soft); color:var(--portal-accent); }
+.admin-login-card .ph7-logo { margin-bottom:24px; }
+.admin-login-form { display:grid; gap:20px; margin-top:24px; }
+.admin-login-form label { display:grid; gap:8px; font-weight:600; }
+.admin-login-form input { width:100%; min-height:48px; font-size:16px; padding:12px; border:1px solid var(--line); border-radius:10px; }
+.admin-login-form input:focus-visible { outline:3px solid var(--ink); outline-offset:3px; }
 .portal-nav .portal-back { min-width:44px; justify-content:center; color:var(--portal-text); }
 .portal-back-mobile { display:none; }
 @media (max-width:600px) {

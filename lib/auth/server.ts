@@ -63,6 +63,12 @@ export async function currentPatientSession(): Promise<StoredSession | null> {
 export async function currentAdminSession(): Promise<StoredSession | null> {
   try { return await getReferralSessionService().readAdminSession((await cookies()).get(adminSessionCookie)?.value); } catch { return null; }
 }
+/** End only founder access; preserve any patient referral session in this browser. */
+export async function logoutAdminSession(): Promise<void> {
+  const store = await cookies();
+  await getReferralSessionService().endAdminSession(store.get(adminSessionCookie)?.value);
+  store.delete(adminSessionCookie); store.delete(adminCsrfCookie);
+}
 
 export async function logoutCurrentSessions(): Promise<void> {
   const store = await cookies();
