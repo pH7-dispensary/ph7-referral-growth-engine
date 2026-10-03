@@ -16,12 +16,24 @@ import { presentReferralStatus } from "@/lib/portal/status";
 describe("patient referral portal", () => {
   it("provides a session-preserving fixed Patient App return link", () => {
     const markup = renderToStaticMarkup(<PortalDashboard data={getSyntheticPatientPortalData()} qrSvg="<svg />" />);
-    expect(markup).toContain('href="https://app.ph7.health/" aria-label="Back to pH7"');
+    expect(markup).toContain('href="https://patients.ph7.health/en/home" aria-label="Back to pH7"');
     expect(markup).toContain('referrerPolicy="no-referrer"');
     expect(markup).toContain("← Back to pH7");
     expect(markup).not.toContain("history.back");
     expect(markup).not.toContain("/api/auth/logout");
-    expect(renderToStaticMarkup(<BackToPh7 />)).not.toContain('target="_blank"');
+    const control = renderToStaticMarkup(<BackToPh7 />);
+    expect(control).not.toContain('target="_blank"');
+    const href = control.match(/href="([^"]+)"/)?.[1];
+    expect(href).toBe("https://patients.ph7.health/en/home");
+    const destination = new URL(href!);
+    expect(destination.search).toBe("");
+    expect(destination.hash).toBe("");
+    expect(destination.username).toBe("");
+    expect(destination.password).toBe("");
+    expect(control).not.toContain("app.ph7.health");
+    expect(control).not.toContain("refer.ph7.health");
+    expect(control).not.toContain("onclick");
+    expect(control).not.toContain("<script");
   });
   it("renders campaign values, holding period and an actionable empty referral state", () => {
     const portal = { ...getSyntheticPatientPortalData(), friendIncentiveMinor: 750, currentRewardMinor: 1250, holdingPeriodDays: 9, referrals: [], payouts: [] };

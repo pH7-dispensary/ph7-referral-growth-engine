@@ -33,6 +33,14 @@ The Referral Engine consumes each nonce once in PostgreSQL. Duplicate, malformed
 
 ## 2. Attribution hand-off
 
+### Patient return navigation (2026-10-03 correction)
+
+The patient portal's Back to pH7 control uses a fixed, same-tab HTTPS anchor to `https://patients.ph7.health/en/home`, without a query, fragment, token, identity, referrer or logout. The handoff issuer/redemption origin `app.ph7.health` is **not** the return destination. This return control does not change the signed entry flow or Refer session.
+
+The live Patient domain currently serves Android `assetlinks.json` for `app.ph7` with `delegate_permission/common.handle_all_urls`, and an Apple association file identifying `69F2T3M9C4.app.pH7.user`. Both were read-only verified as HTTP 200, JSON, without redirects. The Apple file presently matches every path (`*`), not restricted Patient routes. These are public server declarations, **not verification** of the installed app's signing identity, Associated Domains entitlement, native URL handler, Android intent filters or browser dismissal support.
+
+The actual native Patient App source was not available in the inspected local project locations. Do not infer a native bridge, invent a custom scheme, add `window.close()` or claim a device round trip. The native owner must inspect how Refer is presented; use a supported container dismissal if possible, otherwise handle the canonical Patient URL through the OS association. Verify the real iOS identity against the served association, `applinks:patients.ph7.health` entitlement and Universal Link lifecycle handler; scope the association to appropriate supported Patient routes in its owning repository. Verify Android HTTPS/host/path intent filters, `android:autoVerify`, installed signing certificate and device domain-verification state. Native changes require a new app build/release; whether they are necessary is pending source inspection. Physical iPhone/Safari/SFSafariViewController and Android Chrome repeated round trips remain required. Normal HTTPS fallback is available if native routing is unavailable; it does not transfer Patient authentication between browser contexts.
+
 Referral links create an opaque `attribution_id`. The CTA redirects to the configured pH7 patient boundary as `https://patients.ph7.health/?attribution_id=attr_...`. pH7 should accept and store that reference during signup/account creation, then echo it in later trusted consultation events.
 
 Do not parse the ID. It contains no patient identity and no reward economics.
