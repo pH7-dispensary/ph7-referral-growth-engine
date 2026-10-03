@@ -85,3 +85,13 @@ After DNS changes, run `npx vercel domains verify refer.ph7.health --scope ph7-d
 The production webhook secret is generated and stored in Vercel as `PH7_WEBHOOK_SECRET`. Because Vercel stores it hidden, do not attempt to read or expose it. If pH7 has not yet received the same value through an approved private channel, rotate the Referral Engine production secret during a secure live handoff and provide the value to the pH7 developer only through that approved channel. pH7 must configure it as `REFERRAL_WEBHOOK_SECRET` and send webhooks to `https://refer.ph7.health/api/webhooks/ph7`.
 
 Before joint E2E payment testing, confirm externally: `[ ] Viva Source 3671 Active and linked to pH7`.
+
+## Patient portal review operation
+
+The production `/portal` page is authenticated by the existing patient session and reads only server-derived `referral_user_id` scope. It does not accept patient identity, referral user IDs, or economics from the browser.
+
+Current offer values displayed in the hero/share copy come from the active campaign and programme settings. Reward cards come from `reward_ledger`; do not reconcile or "fix" portal balances in UI code. If the portal shows no offer, verify that one campaign is active and programme settings are enabled before changing code.
+
+Production in-portal withdrawal submission is intentionally disabled until `PAYOUT_DATA_ENCRYPTION_KEY` and an approved bank-detail encryption/storage path are implemented. Existing payout requests and masked account endings are displayed when they exist. Manual/admin payout operations remain the source of truth.
+
+For a portal UI release, run `npm run lint`, `npm run typecheck`, `npm run validate:migrations`, `npm run test:run`, and `npm run build`. If database read-model behavior changes, also run the PostgreSQL persistence/auth suites against only the dedicated Referral Growth Engine database. Never use real patient data for screenshots or smoke tests.

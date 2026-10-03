@@ -233,3 +233,17 @@ Validation before deployment: database identity/schema verification passed; `npm
 ## Phase 11 — Isolated Vercel deployment
 
 Acceptance: user has explicitly approved a new Vercel project and dedicated environment/database; no existing project, DNS, route, or production infrastructure is overwritten; environment variables are set safely; deployment and smoke test are documented.
+
+## Authenticated patient portal redesign — 2026-10-03
+
+The authenticated `/portal` experience is now a mobile-first pH7 Refer product surface instead of a technical session page. It uses the pH7 design palette, Manrope typography, a compact "Give/Get" hero, primary share card, native share/copy/WhatsApp actions, QR code, three-step explanation, reward cards, referral activity, payout history, and compact referral details.
+
+Production portal data is read server-side from the existing dedicated PostgreSQL schema. `lib/portal/postgres-data.ts` composes the active campaign/programme settings, active referral code, immutable referral economics, reward ledger, referral statuses, and payout history into the existing `PatientPortalData` boundary. Current live incentives come from the active campaign/settings; available/pending/lifetime balances continue to come only from `reward_ledger`. Historical referral rows still display their immutable captured economics.
+
+No authentication, hand-off, JWKS, nonce, session, webhook, attribution, qualification, fraud, ledger, or payout accounting logic changed. `POST /auth/handoff` and `GET /auth/handoff/start` were intentionally left untouched.
+
+Patient-facing referral states now map to plain-language labels such as "Friend joined", "Consultation booked", "Reward pending", "Reward ready", "Cancelled/refunded", and "Paid out" without exposing friend PII. Empty referral states include a share CTA.
+
+Withdrawal display uses the existing balance and payout-history data, but production in-portal withdrawal submission remains disabled until secure bank-detail encryption/storage is configured. The UI therefore does not invent a new financial path or store IBAN data without an approved encryption service. Development/demo mode may still pass its synthetic payout action for review fixtures.
+
+Validation on 2026-10-03 passed: lint, typecheck, static migration validation, 63 unit tests, and production build.

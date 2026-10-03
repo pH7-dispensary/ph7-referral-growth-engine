@@ -1,15 +1,13 @@
 import { PortalDashboard } from "@/components/portal/portal-dashboard";
-import { ShareActions } from "@/components/portal/share-actions";
 import { requestDemoPortalPayout } from "@/lib/demo/actions";
 import { referralDemoModeEnabled } from "@/lib/demo/config";
 import { getDemoPortalData } from "@/lib/demo/data";
 import { getSyntheticPatientPortalData } from "@/lib/portal/data";
 import { requireDevelopmentPatientSession } from "@/lib/portal/dev-access";
+import { getPostgresPatientPortalData } from "@/lib/portal/postgres-data";
 import { createReferralQrSvg } from "@/lib/portal/qr";
-import { buildReferralUrl } from "@/lib/portal/referral-link";
 import { currentPatientSession } from "@/lib/auth/server";
 import { hasPatientAccess } from "@/lib/auth/authorization";
-import { PostgresAuthRepository } from "@/lib/auth/postgres";
 import { getPostgresExecutor } from "@/lib/persistence/node-postgres";
 import { redirect } from "next/navigation";
 
@@ -26,24 +24,10 @@ export default async function PortalPage() {
     if (!hasPatientAccess(session)) redirect("/");
     // The session-derived referral user ID is the only identifier used for this
     // query; no patient/reference identifier is accepted from the browser.
-    const code = await new PostgresAuthRepository(getPostgresExecutor()).findPatientReferralCode(session.referralUserId);
-    if (!code) return <main className="entry-shell"><section className="entry-card"><p className="eyebrow">Referral portal</p><h1>Secure referral session established.</h1><p className="entry-copy">Your referral account is scoped to this verified session; no active referral code is available yet.</p></section></main>;
-    const referralUrl = buildReferralUrl(code);
-    return (
-      <main className="portal-shell">
-        <header className="portal-header"><p className="brand" aria-label="pH7 Referral Portal">pH<span>7</span></p><span className="test-badge">Secure patient session</span></header>
-        <section className="portal-hero" aria-labelledby="welcome-title">
-          <p className="eyebrow">Your referral space</p>
-          <h1 id="welcome-title">Invite someone. Share the care.</h1>
-          <p>Your referral portal is open from your verified pH7 session. Share your personal invitation below.</p>
-        </section>
-        <section className="share-card" aria-labelledby="share-title">
-          <div className="section-heading"><div><p className="eyebrow">Your invitation</p><h2 id="share-title">Make sharing simple</h2></div><span className="code-chip">{code}</span></div>
-          <p className="referral-link">{referralUrl}</p>
-          <ShareActions referralUrl={referralUrl} />
-        </section>
-      </main>
-    );
+    const data = await getPostgresPatientPortalData(getPostgresExecutor(), session.referralUserId);
+    if (!data) return <main className="entry-shell"><section className="entry-card"><p className="eyebrow">pH7 Refer</p><h1>Your referral invite is being prepared.</h1><p className="entry-copy">Please try again shortly. If this continues, pH7 support can refresh your referral access without exposing any patient data.</p></section></main>;
+    const qrSvg = await createReferralQrSvg(data.referralUrl);
+    return <PortalDashboard data={data} qrSvg={qrSvg} payoutNote="Manual pH7 payout review remains in place. Secure in-portal withdrawal submission will be enabled once bank-detail encryption is configured." />;
   }
   await requireDevelopmentPatientSession();
   const data = getSyntheticPatientPortalData();

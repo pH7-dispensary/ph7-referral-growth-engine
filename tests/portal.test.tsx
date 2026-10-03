@@ -16,7 +16,7 @@ describe("patient referral portal", () => {
     const referral = portal.referrals[2];
     const markup = renderToStaticMarkup(<ReferralSummary referral={referral} patientLabel={referral.patientLabel} />);
     expect(markup).toContain("Friend 3");
-    expect(markup).toContain("Payment received");
+    expect(markup).toContain("Consultation completed");
     expect(markup).toContain("€15");
   });
 
@@ -28,7 +28,7 @@ describe("patient referral portal", () => {
   });
 
   it("translates internal referral states into patient-friendly presentation", () => {
-    expect(presentReferralStatus("QUALIFIED")).toMatchObject({ label: "Reward confirmed", tone: "pending" });
+    expect(presentReferralStatus("QUALIFIED")).toMatchObject({ label: "Reward pending", tone: "pending" });
     expect(presentReferralStatus("FRAUD_REVIEW")).toMatchObject({ label: "Under review", tone: "review" });
     expect(presentReferralStatus("REFUNDED").detail).not.toContain("FRAUD_REVIEW");
   });

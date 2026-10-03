@@ -243,16 +243,20 @@ export async function getDemoPortalData(): Promise<PatientPortalData> {
     effectiveAt: row.effectiveAt ? asDate(row.effectiveAt) : null,
     createdAt: asDate(row.createdAt),
   }));
-  const payouts = await sql.query<{ id: string; amount_minor: number; status: string; paid_at: Date | string | null; iban_last4: string }>("SELECT p.id, p.amount_minor, p.status, p.paid_at, a.iban_last4 FROM payout_requests p JOIN payout_accounts a ON a.id=p.payout_account_id WHERE p.referral_user_id=$1 ORDER BY p.created_at DESC", [referralUserId]);
+  const payouts = await sql.query<{ id: string; amount_minor: number; status: string; requested_at: Date | string; paid_at: Date | string | null; iban_last4: string }>("SELECT p.id, p.amount_minor, p.status, p.requested_at, p.paid_at, a.iban_last4 FROM payout_requests p JOIN payout_accounts a ON a.id=p.payout_account_id WHERE p.referral_user_id=$1 ORDER BY p.created_at DESC", [referralUserId]);
   const programme = await currentProgramme(sql);
-  const payoutHistory: PortalPayoutHistoryItem[] = payouts.rows.map((row) => ({ id: row.id, amountMinor: Number(row.amount_minor), paidAt: row.paid_at ? asDate(row.paid_at) : new Date(), accountMask: `TEST ${row.iban_last4}` }));
+  const totals = buildPatientPortalData(referralModels, ledgerRows);
   return {
+    ...totals,
     syntheticPatientName: "Ava (staging patient)",
+    displayName: "Ava",
+    environmentLabel: "Staging demo",
     referralCode: demoReferralCode,
     referralUrl: buildReferralUrl(demoReferralCode),
+    friendIncentiveMinor: programme.friendIncentiveMinor,
+    holdingPeriodDays: programme.holdingPeriodDays,
     minimumWithdrawalMinor: programme.minimumWithdrawalMinor,
-    payouts: payoutHistory,
-    ...buildPatientPortalData(referralModels, ledgerRows),
+    payouts: payouts.rows.map((row) => ({ id: row.id, amountMinor: Number(row.amount_minor), status: row.status as PortalPayoutHistoryItem["status"], requestedAt: asDate(row.requested_at), paidAt: row.paid_at ? asDate(row.paid_at) : null, accountMask: `TEST ${row.iban_last4}` })),
   };
 }
 

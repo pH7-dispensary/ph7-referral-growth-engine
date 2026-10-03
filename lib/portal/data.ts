@@ -8,15 +8,21 @@ import { presentReferralStatus } from "@/lib/portal/status";
 export interface PortalPayoutHistoryItem {
   id: string;
   amountMinor: number;
-  paidAt: Date;
+  status: "REQUESTED" | "PAID" | "REJECTED" | "CANCELLED";
+  requestedAt: Date;
+  paidAt: Date | null;
   accountMask: string;
 }
 
 export interface PatientPortalData {
   syntheticPatientName: string;
+  displayName: string;
+  environmentLabel?: string;
   referralCode: string;
   referralUrl: string;
+  friendIncentiveMinor: number;
   currentRewardMinor: number;
+  holdingPeriodDays: number;
   availableBalanceMinor: number;
   pendingBalanceMinor: number;
   totalEarnedMinor: number;
@@ -46,7 +52,7 @@ const syntheticLedger: LedgerEntry[] = [
   { id: "ledger-4", referralId: null, payoutRequestId: null, type: "CREDIT", amountMinor: 2000, currency: "EUR", status: "EFFECTIVE", idempotencyKey: "synthetic-credit-historical", effectiveAt: now, createdAt: now },
 ];
 
-export function buildPatientPortalData(referrals: PatientPortalData["referrals"], ledger: LedgerEntry[]): Omit<PatientPortalData, "syntheticPatientName" | "referralCode" | "referralUrl" | "minimumWithdrawalMinor" | "payouts"> {
+export function buildPatientPortalData(referrals: PatientPortalData["referrals"], ledger: LedgerEntry[]): Pick<PatientPortalData, "currentRewardMinor" | "availableBalanceMinor" | "pendingBalanceMinor" | "totalEarnedMinor" | "referrals"> {
   const effective = sumMinorUnits(ledger.filter((entry) => entry.status === "EFFECTIVE").map((entry) => entry.amountMinor), "effective ledger amount");
   const pending = sumMinorUnits(ledger.filter((entry) => entry.status === "PENDING" && entry.type === "CREDIT").map((entry) => entry.amountMinor), "pending ledger amount");
   const earned = sumMinorUnits(ledger.filter((entry) => entry.type === "CREDIT" && entry.status !== "VOID").map((entry) => entry.amountMinor), "earned ledger amount");
@@ -61,13 +67,18 @@ export function buildPatientPortalData(referrals: PatientPortalData["referrals"]
 
 export function getSyntheticPatientPortalData(): PatientPortalData {
   const referralCode = "PH7-AVA-72";
+  const totals = buildPatientPortalData(syntheticReferrals, syntheticLedger);
   return {
+    ...totals,
     syntheticPatientName: "Ava (test patient)",
+    displayName: "Ava",
+    environmentLabel: "Development preview",
     referralCode,
     referralUrl: buildReferralUrl(referralCode),
+    friendIncentiveMinor: 1000,
+    holdingPeriodDays: 14,
     minimumWithdrawalMinor: 1000,
-    payouts: [{ id: "synthetic-paid-payout", amountMinor: 1000, paidAt: now, accountMask: "•••• 0154" }],
-    ...buildPatientPortalData(syntheticReferrals, syntheticLedger),
+    payouts: [{ id: "synthetic-paid-payout", amountMinor: 1000, status: "PAID", requestedAt: now, paidAt: now, accountMask: "•••• 0154" }],
   };
 }
 
