@@ -121,15 +121,15 @@ export class PostgresOperationalRepository {
       return {id:flagId,status:decision};
     });
   }
-  async processWebhook(input: { eventId: string; eventType: "consultation.paid" | "consultation.refunded"; attributionPublicId: string; payloadHash?: string }) {
+  async processWebhook(input: { eventId: string; eventType: "consultation.paid" | "consultation.refunded"; attributionPublicId: string; patientReference: string; consultationReference: string; payloadHash?: string }) {
     return this.sql.transaction(async (tx) => {
       const claimed = await tx.query<{ event_id: string }>(
         "INSERT INTO webhook_events (event_id,event_type,payload_hash) VALUES ($1,$2,$3) ON CONFLICT (event_id) DO NOTHING RETURNING event_id",
         [input.eventId, input.eventType, input.payloadHash ?? "verified-webhook"],
       );
       if (!claimed.rows[0]) return { duplicate: true, unknownAttribution: false };
-      const source = await tx.query<{ attribution_id: string; referrer_user_id: string; campaign_id: string; campaign_version: number; programme_settings_version: number; friend_incentive_minor: number; referrer_reward_minor: number; currency: "EUR"; qualification_event: "consultation.paid"; holding_period_days: number; reward_cap_minor: number | null }>(
-        "SELECT a.id AS attribution_id, rc.referral_user_id AS referrer_user_id, a.campaign_id, a.campaign_version, a.programme_settings_version, a.friend_incentive_minor, a.referrer_reward_minor, a.currency, a.qualification_event, a.holding_period_days, a.reward_cap_minor FROM referral_attributions a JOIN referral_codes rc ON rc.id=a.referral_code_id WHERE a.public_id=$1",
+      const source = await tx.query<{ attribution_id: string; referrer_user_id: string; referrer_patient_reference: string; campaign_id: string; campaign_version: number; programme_settings_version: number; friend_incentive_minor: number; referrer_reward_minor: number; currency: "EUR"; qualification_event: "consultation.paid"; holding_period_days: number; reward_cap_minor: number | null }>(
+        "SELECT a.id AS attribution_id, rc.referral_user_id AS referrer_user_id, ru.patient_reference AS referrer_patient_reference, a.campaign_id, a.campaign_version, a.programme_settings_version, a.friend_incentive_minor, a.referrer_reward_minor, a.currency, a.qualification_event, a.holding_period_days, a.reward_cap_minor FROM referral_attributions a JOIN referral_codes rc ON rc.id=a.referral_code_id JOIN referral_users ru ON ru.id=rc.referral_user_id WHERE a.public_id=$1",
         [input.attributionPublicId],
       );
       const row = source.rows[0];
@@ -137,16 +137,50 @@ export class PostgresOperationalRepository {
         await tx.query("UPDATE webhook_events SET processed_at=now() WHERE event_id=$1", [input.eventId]);
         return { duplicate: false, unknownAttribution: true };
       }
-      await tx.query(
-        "INSERT INTO referrals (referrer_user_id,attribution_id,campaign_id,campaign_version,programme_settings_version,friend_incentive_minor,referrer_reward_minor,currency,qualification_event,holding_period_days,reward_cap_minor) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) ON CONFLICT (attribution_id) DO NOTHING",
-        [row.referrer_user_id,row.attribution_id,row.campaign_id,row.campaign_version,row.programme_settings_version,row.friend_incentive_minor,row.referrer_reward_minor,row.currency,row.qualification_event,row.holding_period_days,row.reward_cap_minor],
+      // Serialize identities supplied by the trusted pH7 backend before checking
+      // uniqueness. This prevents concurrent, differently identified events from
+      // racing past the fraud checks and lets the second delivery fail closed.
+      const identityLocks = [`consultation:${input.consultationReference}`, `patient:${input.patientReference}`].sort();
+      for (const identity of identityLocks) await tx.query("SELECT pg_advisory_xact_lock(hashtext($1))", [identity]);
+      const conflicts = await tx.query<{ attribution_id: string; same_patient: boolean; same_consultation: boolean }>(
+        `SELECT attribution_id,
+          referred_patient_reference=$1 AS same_patient,
+          consultation_reference=$2 AS same_consultation
+        FROM referrals
+        WHERE (referred_patient_reference=$1 OR consultation_reference=$2)
+          AND attribution_id<>$3
+        FOR UPDATE`,
+        [input.patientReference, input.consultationReference, row.attribution_id],
       );
-      const referralId = (await tx.query<{ id: string }>("SELECT id FROM referrals WHERE attribution_id=$1", [row.attribution_id])).rows[0]!.id;
+      let duplicatePatient = conflicts.rows.some((conflict) => conflict.same_patient);
+      let duplicateConsultation = conflicts.rows.some((conflict) => conflict.same_consultation);
+      const selfReferral = input.patientReference === row.referrer_patient_reference;
+      await tx.query(
+        "INSERT INTO referrals (referrer_user_id,attribution_id,referred_patient_reference,consultation_reference,campaign_id,campaign_version,programme_settings_version,friend_incentive_minor,referrer_reward_minor,currency,qualification_event,holding_period_days,reward_cap_minor) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) ON CONFLICT (attribution_id) DO NOTHING",
+        [row.referrer_user_id,row.attribution_id,duplicatePatient ? null : input.patientReference,duplicateConsultation ? null : input.consultationReference,row.campaign_id,row.campaign_version,row.programme_settings_version,row.friend_incentive_minor,row.referrer_reward_minor,row.currency,row.qualification_event,row.holding_period_days,row.reward_cap_minor],
+      );
+      const stored = (await tx.query<{ id: string; referred_patient_reference: string | null; consultation_reference: string | null }>("SELECT id,referred_patient_reference,consultation_reference FROM referrals WHERE attribution_id=$1 FOR UPDATE", [row.attribution_id])).rows[0]!;
+      duplicatePatient ||= stored.referred_patient_reference !== null && stored.referred_patient_reference !== input.patientReference;
+      duplicateConsultation ||= stored.consultation_reference !== null && stored.consultation_reference !== input.consultationReference;
+      if (!duplicatePatient && !duplicateConsultation && (stored.referred_patient_reference === null || stored.consultation_reference === null)) {
+        await tx.query("UPDATE referrals SET referred_patient_reference=COALESCE(referred_patient_reference,$2),consultation_reference=COALESCE(consultation_reference,$3) WHERE id=$1", [stored.id, input.patientReference, input.consultationReference]);
+      }
+      const referralId = stored.id;
       const repo = new PostgresDomainRepository(tx);
       const lifecycle = new ReferralLifecycleService({ transaction: async (work) => work(repo) });
       const ledger = new LedgerService({ transaction: async (work) => work(repo) });
       const current = await repo.findReferral(referralId);
       if (!current) throw new Error("Referral is unavailable.");
+      const fraudTypes: FraudType[] = [];
+      if (selfReferral) fraudTypes.push("SELF_REFERRAL");
+      if (duplicatePatient) fraudTypes.push("DUPLICATE_REFERRED_USER");
+      if (duplicateConsultation) fraudTypes.push("DUPLICATE_PAYMENT_EVENT");
+      for (const type of fraudTypes) await this.flagWebhookFraud(tx, referralId, type);
+      if (fraudTypes.length > 0) {
+        await tx.query("UPDATE webhook_events SET processed_at=now() WHERE event_id=$1", [input.eventId]);
+        await this.audit(tx,"WEBHOOK_REVIEW_REQUIRED","webhook", referralId, undefined, null, { fraudTypes });
+        return { duplicate: false, unknownAttribution: false, fraudReview: true };
+      }
       if (input.eventType === "consultation.paid") {
         const order: ReferralStatus[] = ["VISITED", "ATTRIBUTED", "REGISTERED", "BOOKED", "PAID", "QUALIFIED", "PAYABLE", "PAID_OUT", "CANCELLED", "REFUNDED", "REJECTED", "FRAUD_REVIEW", "EXPIRED"];
         for (const status of ["REGISTERED", "BOOKED", "PAID"] as const) {
@@ -170,5 +204,18 @@ export class PostgresOperationalRepository {
     });
   }
   async auditHistory(limit = 100) { const result = await this.sql.query<{ id: string; action: string; subject_type: string; subject_id: string | null; created_at: Date | string }>("SELECT id, action, subject_type, subject_id, created_at FROM admin_audit_log ORDER BY created_at DESC LIMIT $1", [limit]); return result.rows.map((row) => ({ id: row.id, action: row.action, subjectType: row.subject_type, subjectId: row.subject_id, createdAt: new Date(row.created_at) })); }
+  private async flagWebhookFraud(tx: SqlExecutor, referralId: string, type: FraudType): Promise<void> {
+    const existing = await tx.query<{ id: string }>("SELECT id FROM fraud_flags WHERE referral_id=$1 AND type=$2 AND status<>'REJECTED' FOR UPDATE", [referralId, type]);
+    if (existing.rows[0]) return;
+    const repo = new PostgresDomainRepository(tx);
+    const current = await repo.findReferral(referralId);
+    if (!current) throw new Error("Referral does not exist.");
+    if (current.status !== "FRAUD_REVIEW") {
+      const lifecycle = new ReferralLifecycleService({ transaction: async (work) => work(repo) });
+      await lifecycle.transitionInTransaction(repo, { referralId, toStatus: "FRAUD_REVIEW", source: "SYSTEM", idempotencyKey: `fraud:${referralId}:${type}` });
+    }
+    const flag = await tx.query<{ id: string }>("INSERT INTO fraud_flags(referral_id,type,detail) VALUES ($1,$2,$3::jsonb) RETURNING id", [referralId, type, JSON.stringify({ source: "verified_webhook" })]);
+    await this.audit(tx, "FRAUD_FLAGGED", "fraud_flag", flag.rows[0].id);
+  }
   private async audit(tx: SqlExecutor, action: string, subjectType: string, subjectId: string, actor?: OperationalAuditActor, beforeData: Record<string, unknown> | null = null, afterData: Record<string, unknown> | null = null) { await tx.query("INSERT INTO admin_audit_log (admin_user_id,action,subject_type,subject_id,request_id,before_data,after_data) VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7::jsonb)", [actor?.adminUserId ?? null, action, subjectType, subjectId, actor?.requestId ?? null, beforeData ? JSON.stringify(beforeData) : null, afterData ? JSON.stringify(afterData) : null]); }
 }

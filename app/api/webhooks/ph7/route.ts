@@ -10,6 +10,8 @@ export const runtime = "nodejs";
 const payloadSchema = z.object({
   event_id: z.string().min(1).max(160),
   type: z.enum(["consultation.paid", "consultation.refunded"]),
+  patient_reference: z.string().regex(/^pat_[a-z0-9]+_[A-Za-z0-9_-]+$/).max(160),
+  consultation_reference: z.string().min(1).max(160),
   attribution_id: z.string().min(1).max(160),
   timestamp: z.string().datetime(),
 });
@@ -37,7 +39,14 @@ export async function POST(request: Request) {
       try { parsed = JSON.parse(body); } catch { return permanentFailure(); }
       const payload = payloadSchema.safeParse(parsed);
       if (!payload.success || payload.data.timestamp !== timestamp) return permanentFailure();
-      const result = await database.processWebhook({ eventId: payload.data.event_id, eventType: payload.data.type, attributionPublicId: payload.data.attribution_id, payloadHash: signature });
+      const result = await database.processWebhook({
+        eventId: payload.data.event_id,
+        eventType: payload.data.type,
+        attributionPublicId: payload.data.attribution_id,
+        patientReference: payload.data.patient_reference,
+        consultationReference: payload.data.consultation_reference,
+        payloadHash: signature,
+      });
       return NextResponse.json({ received: true, duplicate: result.duplicate, unknownAttribution: Boolean(result.unknownAttribution) });
     }
     if (process.env.NODE_ENV !== "development") throw new Error("Webhook runtime is unavailable.");

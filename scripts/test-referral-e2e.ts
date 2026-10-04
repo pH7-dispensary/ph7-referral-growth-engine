@@ -158,13 +158,13 @@ async function main(): Promise<void> {
     assert(await count(sql, "SELECT count(*) FROM referrals WHERE attribution_id=(SELECT id FROM referral_attributions WHERE public_id=$1)", [firstAttribution.attribution.attributionId]) === 0, "Referral existed before trusted consultation event.");
     record(steps, 10, "Booking/signup does not prematurely create reward", "PASS", "No referral or ledger credit exists before trusted paid consultation webhook.");
 
-    const unknown = await operational.processWebhook({ eventId: `evt-e2e-unknown-${token}`, eventType: "consultation.paid", attributionPublicId: `attr_${"0".repeat(32)}`, payloadHash: "e2e-unknown" });
+    const unknown = await operational.processWebhook({ eventId: `evt-e2e-unknown-${token}`, eventType: "consultation.paid", attributionPublicId: `attr_${"0".repeat(32)}`, patientReference: `pat_eu_direct_${token}`, consultationReference: `consult-e2e-unknown-${token}`, payloadHash: "e2e-unknown" });
     assert(unknown.unknownAttribution === true, "Unknown attribution was not safely acknowledged.");
     assert(await count(sql, "SELECT count(*) FROM reward_ledger WHERE idempotency_key LIKE $1", [`webhook:evt-e2e-unknown-${token}:%`]) === 0, "Unknown attribution created a reward.");
     record(steps, 11, "Direct/non-referred traffic receives no referral reward", "PASS", `direct_email=${directEmail}; unknown attribution acknowledged without reward`);
 
     const paidEventId = `evt-e2e-paid-${token}`;
-    const paid = await operational.processWebhook({ eventId: paidEventId, eventType: "consultation.paid", attributionPublicId: firstAttribution.attribution.attributionId, payloadHash: "e2e-paid" });
+    const paid = await operational.processWebhook({ eventId: paidEventId, eventType: "consultation.paid", attributionPublicId: firstAttribution.attribution.attributionId, patientReference: `pat_eu_friend_${token}`, consultationReference: `consult-e2e-paid-${token}`, payloadHash: "e2e-paid" });
     assert(!paid.duplicate && !paid.unknownAttribution, "Paid event was not processed as a known attribution.");
     const referral = await sql.query<{ id: string; status: string; referrer_reward_minor: string | number; referrer_user_id: string; attribution_public_id: string }>(
       "SELECT r.id, r.status, r.referrer_reward_minor, r.referrer_user_id, a.public_id AS attribution_public_id FROM referrals r JOIN referral_attributions a ON a.id=r.attribution_id WHERE a.public_id=$1",
@@ -182,11 +182,38 @@ async function main(): Promise<void> {
     assert(Number(credit.rows[0]!.count) === 1 && integer(credit.rows[0]!.amount_minor) === rewardMinor, "Reward credit mismatch.");
     record(steps, 13, "Reward amount uses current admin-configured value", "PASS", `campaign_reward_minor=${rewardMinor}; ledger_credit_minor=${credit.rows[0]!.amount_minor}`);
 
-    const duplicatePaid = await operational.processWebhook({ eventId: paidEventId, eventType: "consultation.paid", attributionPublicId: firstAttribution.attribution.attributionId, payloadHash: "e2e-paid" });
-    const secondPaid = await operational.processWebhook({ eventId: `evt-e2e-paid-second-${token}`, eventType: "consultation.paid", attributionPublicId: firstAttribution.attribution.attributionId, payloadHash: "e2e-paid-second" });
+    const duplicatePaid = await operational.processWebhook({ eventId: paidEventId, eventType: "consultation.paid", attributionPublicId: firstAttribution.attribution.attributionId, patientReference: `pat_eu_friend_${token}`, consultationReference: `consult-e2e-paid-${token}`, payloadHash: "e2e-paid" });
+    const secondPaid = await operational.processWebhook({ eventId: `evt-e2e-paid-second-${token}`, eventType: "consultation.paid", attributionPublicId: firstAttribution.attribution.attributionId, patientReference: `pat_eu_friend_${token}`, consultationReference: `consult-e2e-paid-${token}`, payloadHash: "e2e-paid-second" });
     assert(duplicatePaid.duplicate === true, "Duplicate event ID was not idempotent.");
     assert(await count(sql, "SELECT count(*) FROM reward_ledger WHERE referral_id=$1 AND type='CREDIT'", [referralRow.id]) === 1, "Duplicate/same attribution created extra credit.");
     record(steps, 14, "Duplicate payment/same friend cannot duplicate reward", "PASS", `duplicate_event=${duplicatePaid.duplicate}; second_event_duplicate=${secondPaid.duplicate ?? false}; credit_rows=1`);
+
+    const selfReview = await operational.processWebhook({ eventId: `evt-e2e-self-${token}`, eventType: "consultation.paid", attributionPublicId: secondJourney.attribution.attributionId, patientReference, consultationReference: `consult-e2e-self-${token}`, payloadHash: "e2e-self" });
+    const selfState = await sql.query<{ referral_status: string; flag_count: string; credit_count: string }>(`SELECT r.status AS referral_status,
+      (SELECT count(*)::text FROM fraud_flags WHERE referral_id=r.id AND type='SELF_REFERRAL') AS flag_count,
+      (SELECT count(*)::text FROM reward_ledger WHERE referral_id=r.id) AS credit_count
+      FROM referrals r JOIN referral_attributions a ON a.id=r.attribution_id WHERE a.public_id=$1`, [secondJourney.attribution.attributionId]);
+    assert(selfReview.fraudReview === true && selfState.rows[0]?.referral_status === "FRAUD_REVIEW" && selfState.rows[0]?.flag_count === "1" && selfState.rows[0]?.credit_count === "0", "Verified self-referral was not quarantined before reward creation.");
+
+    const duplicatePatientAttribution = await attribution.createOrResolveAttribution({ code: referralCode, journeyId: randomUUID(), now });
+    const duplicatePatientReview = await operational.processWebhook({ eventId: `evt-e2e-duplicate-patient-${token}`, eventType: "consultation.paid", attributionPublicId: duplicatePatientAttribution.attribution.attributionId, patientReference: `pat_eu_friend_${token}`, consultationReference: `consult-e2e-duplicate-patient-${token}`, payloadHash: "e2e-duplicate-patient" });
+    const duplicatePatientState = await sql.query<{ referral_status: string; flag_count: string; credit_count: string }>(`SELECT r.status AS referral_status,
+      (SELECT count(*)::text FROM fraud_flags WHERE referral_id=r.id AND type='DUPLICATE_REFERRED_USER') AS flag_count,
+      (SELECT count(*)::text FROM reward_ledger WHERE referral_id=r.id) AS credit_count
+      FROM referrals r JOIN referral_attributions a ON a.id=r.attribution_id WHERE a.public_id=$1`, [duplicatePatientAttribution.attribution.attributionId]);
+    assert(duplicatePatientReview.fraudReview === true && duplicatePatientState.rows[0]?.referral_status === "FRAUD_REVIEW" && duplicatePatientState.rows[0]?.flag_count === "1" && duplicatePatientState.rows[0]?.credit_count === "0", "Duplicate referred patient was not quarantined before reward creation.");
+
+    const duplicateConsultationAttribution = await attribution.createOrResolveAttribution({ code: referralCode, journeyId: randomUUID(), now });
+    const duplicateConsultationReview = await operational.processWebhook({ eventId: `evt-e2e-duplicate-consultation-${token}`, eventType: "consultation.paid", attributionPublicId: duplicateConsultationAttribution.attribution.attributionId, patientReference: `pat_eu_other_${token}`, consultationReference: `consult-e2e-paid-${token}`, payloadHash: "e2e-duplicate-consultation" });
+    const duplicateConsultationState = await sql.query<{ referral_status: string; flag_count: string; credit_count: string }>(`SELECT r.status AS referral_status,
+      (SELECT count(*)::text FROM fraud_flags WHERE referral_id=r.id AND type='DUPLICATE_PAYMENT_EVENT') AS flag_count,
+      (SELECT count(*)::text FROM reward_ledger WHERE referral_id=r.id) AS credit_count
+      FROM referrals r JOIN referral_attributions a ON a.id=r.attribution_id WHERE a.public_id=$1`, [duplicateConsultationAttribution.attribution.attributionId]);
+    assert(duplicateConsultationReview.fraudReview === true && duplicateConsultationState.rows[0]?.referral_status === "FRAUD_REVIEW" && duplicateConsultationState.rows[0]?.flag_count === "1" && duplicateConsultationState.rows[0]?.credit_count === "0", "Duplicate consultation was not quarantined before reward creation.");
+    record(steps, 15, "Verified webhook identity fraud controls", "PASS", "self-referral, duplicate referred patient, and duplicate consultation were quarantined without ledger credit");
+    const generatedFlags = await sql.query<{ id: string }>("SELECT f.id FROM fraud_flags f JOIN referrals r ON r.id=f.referral_id WHERE r.referrer_user_id=$1 AND f.detail->>'source'='verified_webhook'", [referrerUserId]);
+    for (const flag of generatedFlags.rows) await operational.resolveFraud(flag.id, "APPROVED", actor);
+    assert(await count(sql, "SELECT count(*) FROM referrals WHERE referrer_user_id=$1 AND status='FRAUD_REVIEW'", [referrerUserId]) === 0, "Approved test fraud reviews remained open.");
 
     const adminReferral = await sql.query<{ status: string; reward: string }>("SELECT status, referrer_reward_minor::text AS reward FROM referrals WHERE id=$1", [referralRow.id]);
     assert(adminReferral.rows[0]?.status === "QUALIFIED", "Admin read model query did not see qualified referral.");
@@ -211,10 +238,10 @@ async function main(): Promise<void> {
     record(steps, 18, "Patient/referrer visibility after payout", "PASS", `available_balance_minor=${balances.rows[0]!.balance}; lifetime_credit_minor=${balances.rows[0]!.lifetime}`);
 
     const refundAttribution = await attribution.createOrResolveAttribution({ code: referralCode, journeyId: randomUUID(), now });
-    await operational.processWebhook({ eventId: `evt-e2e-refund-paid-${token}`, eventType: "consultation.paid", attributionPublicId: refundAttribution.attribution.attributionId, payloadHash: "e2e-refund-paid" });
+    await operational.processWebhook({ eventId: `evt-e2e-refund-paid-${token}`, eventType: "consultation.paid", attributionPublicId: refundAttribution.attribution.attributionId, patientReference: `pat_eu_refund_${token}`, consultationReference: `consult-e2e-refund-${token}`, payloadHash: "e2e-refund-paid" });
     const refundReferral = await sql.query<{ id: string }>("SELECT r.id FROM referrals r JOIN referral_attributions a ON a.id=r.attribution_id WHERE a.public_id=$1", [refundAttribution.attribution.attributionId]);
-    const refundResult = await operational.processWebhook({ eventId: `evt-e2e-refund-${token}`, eventType: "consultation.refunded", attributionPublicId: refundAttribution.attribution.attributionId, payloadHash: "e2e-refund" });
-    const duplicateRefund = await operational.processWebhook({ eventId: `evt-e2e-refund-${token}`, eventType: "consultation.refunded", attributionPublicId: refundAttribution.attribution.attributionId, payloadHash: "e2e-refund" });
+    const refundResult = await operational.processWebhook({ eventId: `evt-e2e-refund-${token}`, eventType: "consultation.refunded", attributionPublicId: refundAttribution.attribution.attributionId, patientReference: `pat_eu_refund_${token}`, consultationReference: `consult-e2e-refund-${token}`, payloadHash: "e2e-refund" });
+    const duplicateRefund = await operational.processWebhook({ eventId: `evt-e2e-refund-${token}`, eventType: "consultation.refunded", attributionPublicId: refundAttribution.attribution.attributionId, patientReference: `pat_eu_refund_${token}`, consultationReference: `consult-e2e-refund-${token}`, payloadHash: "e2e-refund" });
     const reversal = await sql.query<{ count: string; amount_minor: string; status: string }>(
       "SELECT count(*)::text, COALESCE(SUM(amount_minor),0)::text AS amount_minor, max(r.status)::text AS status FROM reward_ledger l JOIN referrals r ON r.id=l.referral_id WHERE l.referral_id=$1 AND l.type='REVERSAL'",
       [refundReferral.rows[0]!.id],
@@ -240,7 +267,7 @@ async function main(): Promise<void> {
       [patientReference, referralCode, referrerUserId, `evt-e2e-%-${token}`],
     );
     const i = integrity.rows[0]!;
-    assert(Number(i.referrers) === 1 && Number(i.codes) === 1 && Number(i.attributions) >= 3 && Number(i.referrals) === 2 && Number(i.credit_rows) === 2 && Number(i.payout_rows) === 1 && Number(i.orphan_referrals) === 0, "Data integrity counts are unexpected.");
+    assert(Number(i.referrers) === 1 && Number(i.codes) === 1 && Number(i.attributions) >= 5 && Number(i.referrals) === 5 && Number(i.credit_rows) === 2 && Number(i.payout_rows) === 1 && Number(i.orphan_referrals) === 0, "Data integrity counts are unexpected.");
     record(steps, 21, "Database integrity inspection", "PASS", `referrers=${i.referrers}; codes=${i.codes}; attributions=${i.attributions}; referrals=${i.referrals}; credit_rows=${i.credit_rows}; payout_rows=${i.payout_rows}; orphan_referrals=${i.orphan_referrals}`);
 
     const invalid = await attribution.resolveOffer("INVALID1", now);

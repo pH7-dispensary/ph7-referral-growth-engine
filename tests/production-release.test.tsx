@@ -3,6 +3,8 @@ import IntegrationPage from "@/app/integration/page";
 import { referralPublicOrigin } from "@/lib/portal/public-url";
 import { buildReferralUrl } from "@/lib/portal/referral-link";
 import FounderDashboardReview from "@/app/dev/founder-dashboard/page";
+import { referralDemoModeEnabled } from "@/lib/demo/config";
+import { resolveRuntimeOffer } from "@/lib/funnel/runtime-attribution";
 
 afterEach(() => vi.unstubAllEnvs());
 
@@ -25,6 +27,16 @@ describe("production release boundaries", () => {
   ])("does not expose integration/demo UI in production or tests", (environment) => {
     for (const [name, value] of Object.entries(environment)) vi.stubEnv(name, value);
     expect(() => IntegrationPage()).toThrow("NEXT_HTTP_ERROR_FALLBACK;404");
+  });
+  it("makes production demo mode impossible even when preview flags are copied accidentally", () => {
+    expect(referralDemoModeEnabled({ NODE_ENV:"production", APP_ENV:"preview", VERCEL_ENV:"production", REFERRAL_DEMO_MODE:"true" } as NodeJS.ProcessEnv)).toBe(false);
+    expect(referralDemoModeEnabled({ NODE_ENV:"production", APP_ENV:"production", VERCEL_ENV:"preview", REFERRAL_DEMO_MODE:"true" } as NodeJS.ProcessEnv)).toBe(false);
+    expect(referralDemoModeEnabled({ NODE_ENV:"production", APP_ENV:"preview", VERCEL_ENV:"preview", REFERRAL_DEMO_MODE:"true" } as NodeJS.ProcessEnv)).toBe(true);
+  });
+  it("fails closed instead of using synthetic attribution when production PostgreSQL is unavailable", async () => {
+    vi.stubEnv("NODE_ENV","production");
+    vi.stubEnv("REFERRAL_DATABASE_URL","");
+    await expect(resolveRuntimeOffer("PH7-AVA-72")).rejects.toThrow("PostgreSQL persistence is required");
   });
   it.each(["development", "preview"])("preserves explicit %s developer review", (environment) => {
     vi.stubEnv("NODE_ENV", environment === "development" ? "development" : "production");

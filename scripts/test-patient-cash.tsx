@@ -102,7 +102,7 @@ export async function testPatientCashIntegration() {
   assert.equal((await getPostgresPatientPortalData(sql,user))?.payouts.find(p=>p.id===requests[0].id)?.status,"PAID");
   stage="refund-idempotency";
   const publicId=(await sql.query<{public_id:string}>("SELECT a.public_id FROM referral_attributions a JOIN referrals r ON r.attribution_id=a.id WHERE r.id=$1",[newer])).rows[0].public_id;
-  const refund={eventId:`${marker}:refund`,eventType:"consultation.refunded" as const,attributionPublicId:publicId};
+  const refund={eventId:`${marker}:refund`,eventType:"consultation.refunded" as const,attributionPublicId:publicId,patientReference:`pat_eu_refund_${randomUUID().replaceAll("-","")}`,consultationReference:`consult-${randomUUID()}`};
   await repo.processWebhook(refund);assert.equal((await repo.processWebhook(refund)).duplicate,true);
   assert.equal((await sql.query<{count:string}>("SELECT count(*) FROM reward_ledger WHERE referral_id=$1 AND type='REVERSAL'",[newer])).rows[0].count,"1");
   await assert.rejects(repo.markPayoutPaid(data.payouts.find(p=>p.id!==requests[0].id)!.id,`${marker}:second-paid`));
