@@ -27,7 +27,8 @@
     "db:ensure-preview-fixture": "NODE_OPTIONS=--conditions=react-server tsx scripts/ensure-preview-synthetic-fixture.ts",
     "db:ensure-staging-demo": "NODE_OPTIONS=--conditions=react-server tsx scripts/ensure-staging-demo-fixture.ts",
     "db:cleanup-step112b": "tsx scripts/cleanup-step112b-concurrency-fixtures.ts",
-    "validate": "npm run lint && npm run typecheck && npm run validate:migrations && npm run test:run"
+    "validate": "npm run lint && npm run typecheck && npm run validate:migrations && npm run test:run",
+    "test:database:incentive-snapshot": "NODE_OPTIONS=--conditions=react-server tsx scripts/test-attribution-incentive-snapshot.ts"
   },
   "dependencies": {
     "jose": "^6.2.12",
