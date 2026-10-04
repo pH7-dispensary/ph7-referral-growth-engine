@@ -121,6 +121,25 @@ export class PostgresOperationalRepository {
       return {id:flagId,status:decision};
     });
   }
+  /**
+   * Read-only: the friend incentive snapshotted on an attribution when the
+   * friend followed the referral link. Never consults the current campaign, so
+   * later admin changes cannot alter an existing referral's economics.
+   */
+  async resolveAttributionIncentive(attributionPublicId: string, patientReference: string): Promise<
+    | { status: "ok"; friendIncentiveMinor: number; currency: "EUR" }
+    | { status: "unknown" }
+    | { status: "self_referral" }
+  > {
+    const result = await this.sql.query<{ friend_incentive_minor: number | string; currency: "EUR"; referrer_patient_reference: string | null }>(
+      "SELECT a.friend_incentive_minor, a.currency, ru.patient_reference AS referrer_patient_reference FROM referral_attributions a JOIN referral_codes rc ON rc.id=a.referral_code_id JOIN referral_users ru ON ru.id=rc.referral_user_id WHERE a.public_id=$1",
+      [attributionPublicId],
+    );
+    const row = result.rows[0];
+    if (!row) return { status: "unknown" };
+    if (row.referrer_patient_reference === patientReference) return { status: "self_referral" };
+    return { status: "ok", friendIncentiveMinor: Number(row.friend_incentive_minor), currency: row.currency };
+  }
   async processWebhook(input: { eventId: string; eventType: "consultation.paid" | "consultation.refunded"; attributionPublicId: string; patientReference: string; consultationReference: string; payloadHash?: string }) {
     return this.sql.transaction(async (tx) => {
       const claimed = await tx.query<{ event_id: string }>(

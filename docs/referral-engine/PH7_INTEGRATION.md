@@ -90,3 +90,15 @@ pH7 application variables to configure outside this repository:
 - `REFERRAL_WEBHOOK_URL=https://refer.ph7.health/api/webhooks/ph7`
 - `NEXT_PUBLIC_REFERRAL_ENGINE_URL=https://refer.ph7.health`
 - `REFERRAL_WEBHOOK_SECRET` equal to the Referral Engine `PH7_WEBHOOK_SECRET`, transferred only through an approved secure channel.
+
+## 4. Friend incentive resolution (server-to-server)
+
+pH7 checkout applies the friend incentive SNAPSHOTTED on the attribution, never the current campaign.
+
+`POST /api/attributions/resolve` — signed exactly like `/api/webhooks/ph7` (hex HMAC-SHA256 over `"<x-ph7-timestamp>.<raw body>"` with `PH7_WEBHOOK_SECRET`, timestamp within tolerance).
+
+Body: `{"attribution_id":"attr_…","patient_reference":"pat_eu_123"}` (strict; no other fields).
+
+- `200 {"attribution_id","friend_incentive_minor","currency":"EUR"}` — from `referral_attributions` (immutable snapshot)
+- `404` unknown attribution · `409` self-referral (patient is the referrer) · `401` bad signature · `400` malformed · `503` unavailable
+- Read-only; `no-store`. Proven on PostgreSQL by `npm run test:database:incentive-snapshot` (€10 attribution stays €10 after the campaign moves to €15/€20; a new attribution gets €15).
